@@ -19,6 +19,8 @@ test('does not treat a partial word as answer leakage',()=>{const game=valid();g
 
 test('accepts safe media clues',()=>{const game=valid();game.jeopardy.categories[0].clues=[['Identify this work.','Guernica',{type:'image',url:'https://example.com/guernica.jpg',alt:'A painting'}]];assert.equal(validateGamePackage(game).jeopardy.categories[0].clues[0][2].type,'image')});
 
+test('accepts packaged media clues',()=>{const game=valid();game.jeopardy.categories[0].clues=[['Identify this element.','gold',{type:'image',url:'/media/gold-bars.svg',alt:'Gold bars'}]];assert.equal(validateGamePackage(game).jeopardy.categories[0].clues[0][2].url,'/media/gold-bars.svg')});
+
 test('rejects unsafe media URLs',()=>{const game=valid();game.jeopardy.categories[0].clues=[['Identify this work.','Guernica',{type:'image',url:'javascript:alert(1)'}]];assert.throws(()=>validateGamePackage(game),/media URL/i)});
 
 test('rejects incomplete final',()=>{const game=valid();game.final.answer='';assert.throws(()=>validateGamePackage(game),/Final Jeopardy/i)});

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" role="img" aria-labelledby="title description">
+  <title id="title">Stylized gold bars</title>
+  <desc id="description">Three reflective golden metal bars stacked on a dark blue surface.</desc>
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff0a0"/>
+      <stop offset="0.35" stop-color="#f6bd28"/>
+      <stop offset="0.7" stop-color="#b77700"/>
+      <stop offset="1" stop-color="#ffe066"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="450" rx="28" fill="#08112f"/>
+  <g stroke="#704800" stroke-width="8" stroke-linejoin="round">
+    <path fill="url(#gold)" d="M220 275 570 275 660 355 130 355Z"/>
+    <path fill="url(#gold)" d="M275 180 525 180 600 260 200 260Z"/>
+    <path fill="url(#gold)" d="M335 95 470 95 530 165 270 165Z"/>
+  </g>
+  <g fill="#765000" font-family="system-ui,sans-serif" font-size="28" font-weight="700" text-anchor="middle">
+    <text x="400" y="330">999.9</text>
+    <text x="400" y="235">999.9</text>
+    <text x="400" y="145">999.9</text>
+  </g>
+</svg>

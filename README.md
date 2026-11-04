@@ -1,4 +1,4 @@
-# QuizDock v1.8
+# QuizDock v1.9
 
 Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, contestant-controlled Autohost games, Daily Doubles, sound cues, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, reusable game JSON, native media clues, Cast V4, and private rejoin links.
 
@@ -29,7 +29,7 @@ The server sends AI requests; player browsers never receive the key. AI board ge
 
 Host creates a room. For solo, press **Enable single-player** before anyone joins. For multiplayer, players join from their phones and buzz in. Reading, buzzing, and answering have automatic countdowns. In manual-host mode, AI suggestions remain advisory and the human host chooses Correct/Incorrect or Accept/Reject. In **Automated host** mode, a random contestant chooses the first clue from a phone-friendly board; control then passes to the last contestant with a correct response. Autohost handles timers, round advancement, and clear AI scoring decisions. Uncertain decisions do not change the score, and if AI is unavailable Autohost reveals the answer without changing the score.
 
-Each standard 30-clue game hides one Daily Double in Jeopardy and two in Double Jeopardy. Only the contestant who selected it can wager and answer. The wager is $5 through the greater of that contestant's score or $1,000 in Jeopardy/$2,000 in Double Jeopardy; the response window is five seconds.
+Each standard 30-clue game hides one Daily Double in Jeopardy and two in Double Jeopardy. Only the contestant who selected it can wager and answer. The wager is $5 through the greater of that contestant's score or $1,000 in Jeopardy/$2,000 in Double Jeopardy. After wagering, the clue is shown for six seconds of reading time before the five-second response window begins. Both intervals are configurable.
 
 Use **Download game JSON** to save the current two rounds, Final Jeopardy, media references, and generation settings. **Load game JSON** restores the saved game. **Load generation settings** only repopulates the AI form, allowing edits and a completely new generation without loading the old clues. Daily Double locations are randomized afresh when a game is loaded.
 
@@ -45,9 +45,9 @@ Custom games may add image, audio, or video media as the third clue item. Media 
 ["Identify this instrument from the clip.", "theremin", {"type":"audio", "url":"https://example.org/theremin.mp3", "alt":"Short instrument clip"}]
 ```
 
-The text remains the actual clue (for example, “What song is this?”), while the third item supplies the accompanying media. QuizDock uses native `<img>`, `<audio>`, and `<video>` elements instead of arbitrary iframes so saved games remain portable and untrusted pages cannot run inside the game.
+The text remains the actual clue (for example, “What song is this?”), while the third item supplies the accompanying media. QuizDock uses native `<img>`, `<audio>`, and `<video>` elements instead of arbitrary iframes so saved games remain portable and untrusted pages cannot run inside the game. The built-in sample game contains a packaged image clue so this behavior can be tested without an external URL. AI-generated games remain text-only unless media is explicitly supplied; this avoids invented links, extra image-generation expense, and unreliable third-party searches.
 
-The TV display shows who buzzed, their submitted response, and the correct response after scoring. After every Final Jeopardy response has been scored, it announces the winner or co-winners. Included sound cues cover Daily Doubles, timeouts, round endings, and Final Jeopardy.
+The TV display shows who buzzed, their submitted response, and the correct response after scoring. After every Final Jeopardy response has been scored, it announces the winner or co-winners. Included sound cues cover Daily Doubles, timeouts, round endings, and Final Jeopardy. Browsers require one click or tap before playing sound; use the visible sound button on the host or TV display.
 
 Board generation reports rough progress. When local validation identifies a duplicated, answer-leaking, or otherwise conflicting clue, QuizDock requests up to three small single-clue replacements before considering a new full-board attempt.
 
