@@ -13,4 +13,12 @@ test('rejects paraphrased clue duplication',()=>{const game=valid();game.doubleJ
 
 test('rejects semantically repeated answers',()=>{const game=valid();game.doubleJeopardy.categories[0].clues=[['The force unit named for an English scientist.','the newton']];assert.throws(()=>validateGamePackage(game),/similar answers/i)});
 
+test('rejects a clue that contains its canonical answer',()=>{const game=valid();game.jeopardy.categories[0].clues=[['This unit is called the newton.','newton']];assert.throws(()=>validateGamePackage(game),/leaks its answer/i)});
+
+test('does not treat a partial word as answer leakage',()=>{const game=valid();game.jeopardy.categories[0].clues=[['This discipline includes cartography.','art']];assert.doesNotThrow(()=>validateGamePackage(game))});
+
+test('accepts safe media clues',()=>{const game=valid();game.jeopardy.categories[0].clues=[['Identify this work.','Guernica',{type:'image',url:'https://example.com/guernica.jpg',alt:'A painting'}]];assert.equal(validateGamePackage(game).jeopardy.categories[0].clues[0][2].type,'image')});
+
+test('rejects unsafe media URLs',()=>{const game=valid();game.jeopardy.categories[0].clues=[['Identify this work.','Guernica',{type:'image',url:'javascript:alert(1)'}]];assert.throws(()=>validateGamePackage(game),/media URL/i)});
+
 test('rejects incomplete final',()=>{const game=valid();game.final.answer='';assert.throws(()=>validateGamePackage(game),/Final Jeopardy/i)});

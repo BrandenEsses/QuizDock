@@ -1,4 +1,4 @@
-# QuizDock v1.5
+# QuizDock v1.6
 
 Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, custom game JSON, Cast V4, Android sender sources, and private rejoin links. No narration.
 
@@ -27,7 +27,7 @@ The server sends AI requests; player browsers never receive the key. AI board ge
 
 ## Play
 
-Host creates a room. For solo, press **Enable single-player** before anyone joins. For multiplayer, players join from their phones and buzz in. When a response is submitted, QuizDock automatically requests an AI suggestion. The suggestion is advisory only: it never awards or deducts points, and the human host always chooses Correct/Incorrect or Accept/Reject. If AI is unavailable, play continues normally.
+Host creates a room. For solo, press **Enable single-player** before anyone joins. For multiplayer, players join from their phones and buzz in. Reading, buzzing, and answering have automatic countdowns. In manual-host mode, AI suggestions remain advisory and the human host chooses Correct/Incorrect or Accept/Reject. **Automated host** mode selects clues, advances rounds, and applies clear AI decisions automatically; uncertain decisions do not change the score. If AI is unavailable, automated mode reveals the answer without changing the score.
 
 Custom game import format (the two rounds must be distinct):
 
@@ -35,9 +35,15 @@ Custom game import format (the two rounds must be distinct):
 {"title":"Physics","jeopardy":{"categories":[{"name":"Units","clues":[["SI unit of force","newton"]]}]},"doubleJeopardy":{"categories":[{"name":"Poetry","clues":[["A fourteen-line form","sonnet"]]}]},"final":{"clue":"This city is Mongolia's capital.","answer":"Ulaanbaatar"}}
 ```
 
+Custom games may add image, audio, or video media as the third clue item. Media URLs must use HTTPS or begin with `/downloads/`; generated games intentionally do not invent media URLs.
+
+```json
+["Identify this instrument from the clip.", "theremin", {"type":"audio", "url":"https://example.org/theremin.mp3", "alt":"Short instrument clip"}]
+```
+
 ## Important limitations
 
-This is an experimental prototype, not a public production service. Room state is in memory and lost on restart. There are no rate limits or board persistence. Generation includes an AI editorial/factual-review pass plus local structural and similarity validation, but AI output can still be wrong; review important games before play. The host opens buzzers and makes every scoring decision. Network latency determines buzzer arrival order. Protect port 3000 with LAN/VPN until hardened.
+This is an experimental prototype, not a public production service. Room state is in memory and lost on restart. There are no rate limits or board persistence. Generation uses one schema-constrained, self-audited AI pass plus local structural, answer-leakage, and similarity validation; a failed local check can trigger a full retry. AI output can still be wrong, so review important games before play. Matching requests are cached in memory for one hour by default. The host opens buzzers and makes every scoring decision. Network latency determines buzzer arrival order. Protect port 3000 with LAN/VPN until hardened.
 
 
 ## v0.4: TV spectator and handwritten Final Jeopardy

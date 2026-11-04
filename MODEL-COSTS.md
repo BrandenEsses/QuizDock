@@ -1,24 +1,32 @@
-# Model quality and cost choices
+# Model quality, speed, and cost
 
-QuizDock separates the expensive, infrequent game-writing job from the frequent, short answer checks:
+QuizDock separates the infrequent game-writing job from the frequent, short answer checks.
 
-- `OPENAI_BOARD_MODEL=gpt-6.1-sol` with `OPENAI_BOARD_REASONING=high` is the default. It balances quality and cost for creating and editing 61 clues.
-- `OPENAI_JUDGE_MODEL=gpt-6-luna` with `OPENAI_JUDGE_REASONING=low` is the default for fast advisory checks after each response.
-- For maximum board quality, try `gpt-6-astra`; it costs substantially more. For the cheapest generation, use `gpt-6-luna`, but expect more retries or manual editing.
+## Defaults
 
-As of October 19, 2026, official standard API rates per one million tokens are:
+- `OPENAI_BOARD_MODEL=gpt-6-luna` with `OPENAI_BOARD_REASONING=medium` is the balanced default. The prompt is tightly scoped, Structured Outputs enforce the game shape, and local code checks counts, duplicate concepts, repeated answers, similar clues, and answer leakage.
+- `OPENAI_JUDGE_MODEL=gpt-6-luna` with `OPENAI_JUDGE_REASONING=low` handles short advisory answer checks.
+- A successful board uses one model call. The previous full-board editorial rewrite was removed because it roughly doubled latency and generated tokens.
+- A second board call happens only when the first result fails local validation. Set `AI_GENERATION_ATTEMPTS=1` for the strictest spend ceiling, at the cost of more visible failures.
+- Identical requests are cached in memory for `AI_GAME_CACHE_TTL_SECONDS` (one hour by default), so an immediate retry costs no additional API tokens.
 
-| Model | Input | Output | Good use here |
-|---|---:|---:|---|
-| `gpt-6-astra` | $10.00 | $50.00 | Highest-quality board generation |
-| `gpt-6.1-sol` | $2.00 | $10.00 | Recommended board generation/validation |
-| `gpt-6-luna` | $0.10 | $0.50 | Automatic answer suggestions; budget boards |
+## Quality options
 
-Actual cost depends on token use, reasoning, retries, and processing tier. For a rough illustration, a two-pass board workflow using 12,000 input and 20,000 output tokens would cost about $0.22 with Sol, $1.12 with Astra, or $0.011 with Luna. A Luna answer check using 500 input and 100 output tokens is about $0.0001. These are examples, not guarantees.
+If representative games do not meet the desired quality bar, change one setting at a time:
+
+1. Raise `OPENAI_BOARD_REASONING` from `medium` to `high` while keeping Luna.
+2. If that is still insufficient, use `OPENAI_BOARD_MODEL=gpt-6.1-sol` with `OPENAI_BOARD_REASONING=low` or `medium`.
+3. Keep Luna/low for answer judging; those checks are narrow and advisory.
+
+Avoid restoring a routine second full-board rewrite. It duplicates the largest output in the workflow. Prefer improving the generation prompt or adding deterministic validation for a recurring defect.
+
+## Measure
+
+The host UI reports elapsed time and total input/output tokens for each generated game. Cached games show zero API tokens. Actual cost depends on model, processing tier, generated length, reasoning tokens, and retries.
 
 Current official references:
 
-- https://developers.openai.com/api/docs/models
+- https://developers.openai.com/api/docs/guides/model-selection
+- https://developers.openai.com/api/docs/guides/latency-optimization
+- https://developers.openai.com/api/docs/guides/cost-optimization
 - https://developers.openai.com/api/docs/pricing
-
-Set an API project budget and review actual usage in the OpenAI dashboard. Increasing reasoning can improve difficult editorial work but consumes more output/reasoning tokens and increases latency and cost.
