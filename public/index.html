@@ -334,6 +334,64 @@
         cursor: pointer;
         font-weight: 750;
       }
+      .designerToolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0;
+      }
+      .designerTabs button.active {
+        background: #f6bd49;
+        color: #17172c;
+      }
+      .designerCategory {
+        border: 1px solid #405a98;
+        border-radius: 12px;
+        margin: 10px 0;
+        background: #0d1739;
+      }
+      .designerCategory summary {
+        cursor: pointer;
+        padding: 12px;
+        font-weight: 800;
+      }
+      .designerCategoryBody {
+        padding: 0 12px 12px;
+      }
+      .designerClue {
+        border-top: 1px solid #314675;
+        padding: 12px 0;
+      }
+      .designerClueMain,
+      .designerMediaGrid,
+      .designerFinalGrid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .designerMediaGrid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .designerClue details {
+        margin-top: 8px;
+      }
+      .designerClue details summary {
+        color: #b8c8ed;
+        cursor: pointer;
+      }
+      .designerActions {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      @media (max-width: 700px) {
+        .designerClueMain,
+        .designerMediaGrid,
+        .designerFinalGrid {
+          grid-template-columns: 1fr;
+        }
+      }
       body.spectator .scores {
         justify-content: center;
       }
@@ -508,6 +566,36 @@
               placeholder="JSON for two rounds plus final"
             ></textarea
             ><button class="secondary" id="importBoard">Import game</button>
+          </div>
+          <div class="panel" id="designerPanel">
+            <h3>Visual board designer</h3>
+            <p class="muted">
+              Build both rounds and Final Jeopardy with form controls. Optional
+              media uses the same safe native image, audio, and video format as
+              imported games.
+            </p>
+            <div class="designerToolbar">
+              <button id="designerNew" type="button">New 6×5 board</button>
+              <button id="designerFromRoom" class="secondary" type="button">
+                Edit current game
+              </button>
+              <button id="designerUpload" class="secondary" type="button">
+                Upload JSON
+              </button>
+              <button id="designerDownload" class="secondary" type="button">
+                Download JSON
+              </button>
+              <button id="designerLoad" type="button">
+                Load designed game
+              </button>
+            </div>
+            <input
+              id="designerFile"
+              class="hide"
+              type="file"
+              accept=".json,application/json"
+            />
+            <div id="designerRoot"></div>
           </div>
         </div>
       </div>
@@ -920,12 +1008,280 @@
         if (!file) throw Error("No file selected");
         return JSON.parse(await file.text());
       };
-      const importFullGame = (game) =>
-        socket.emit("board", game, (r) =>
-          r?.ok
-            ? notice("Saved game loaded")
-            : notice(r?.error || "Could not load game"),
+      const importFullGame = (game, done) =>
+        socket.emit("board", game, (r) => {
+          if (r?.ok) notice("Saved game loaded");
+          else notice(r?.error || "Could not load game");
+          done?.(r);
+        });
+      const blankCategory = (index, rows = 5) => ({
+        name: `Category ${index + 1}`,
+        clues: Array.from({ length: rows }, () => ["", ""]),
+      });
+      const blankDesignerGame = () => ({
+        format: "quizdock-game",
+        version: 1,
+        title: "My QuizDock Game",
+        jeopardy: {
+          title: "My QuizDock Game",
+          categories: Array.from({ length: 6 }, (_, i) => blankCategory(i)),
+        },
+        doubleJeopardy: {
+          title: "My QuizDock Game",
+          categories: Array.from({ length: 6 }, (_, i) => blankCategory(i)),
+        },
+        final: { category: "Final Jeopardy", clue: "", answer: "" },
+      });
+      function normalizeDesignerGame(value) {
+        if (!value || typeof value !== "object")
+          throw Error("JSON must contain a game object");
+        const title = String(
+          value.title || value.jeopardy?.title || "My QuizDock Game",
+        ).slice(0, 100);
+        const cleanMedia = (media) => {
+          if (!media || !["image", "audio", "video"].includes(media.type))
+            return null;
+          return Object.fromEntries(
+            ["type", "url", "alt", "provider", "credit", "license", "source"]
+              .filter(
+                (key) => media[key] !== undefined && String(media[key]).trim(),
+              )
+              .map((key) => [key, String(media[key]).trim()]),
+          );
+        };
+        const cleanRound = (round) => ({
+          title,
+          categories: (Array.isArray(round?.categories) &&
+          round.categories.length
+            ? round.categories
+            : Array.from({ length: 6 }, (_, i) => blankCategory(i))
+          )
+            .slice(0, 8)
+            .map((category, categoryIndex) => ({
+              name: String(
+                category?.name || `Category ${categoryIndex + 1}`,
+              ).slice(0, 60),
+              clues: (Array.isArray(category?.clues) && category.clues.length
+                ? category.clues
+                : [["", ""]]
+              )
+                .slice(0, 8)
+                .map((pair) => {
+                  const clue = String(pair?.[0] || "").slice(0, 1000),
+                    answer = String(pair?.[1] || "").slice(0, 1000),
+                    media = cleanMedia(pair?.[2]);
+                  return media ? [clue, answer, media] : [clue, answer];
+                }),
+            })),
+        });
+        const finalMedia = cleanMedia(value.final?.media);
+        return {
+          format: "quizdock-game",
+          version: 1,
+          title,
+          jeopardy: cleanRound(value.jeopardy),
+          doubleJeopardy: cleanRound(value.doubleJeopardy),
+          final: {
+            category: String(value.final?.category || "Final Jeopardy").slice(
+              0,
+              100,
+            ),
+            clue: String(value.final?.clue || "").slice(0, 1000),
+            answer: String(value.final?.answer || "").slice(0, 1000),
+            ...(finalMedia ? { media: finalMedia } : {}),
+          },
+        };
+      }
+      let designerGame = blankDesignerGame(),
+        designerRound = "jeopardy";
+      const designerStatus = (message) => {
+        const node = $("designerStatus");
+        if (node) node.textContent = message;
+      };
+      function designerMediaFields(media = {}, scope = "clue") {
+        const prefix =
+          scope === "final" ? 'data-final-media="' : 'data-media="';
+        return `<div class="designerMediaGrid">
+          <label>Type<select ${prefix}type"><option value="none"${!media.type ? " selected" : ""}>No media</option>${["image", "audio", "video"].map((type) => `<option value="${type}"${media.type === type ? " selected" : ""}>${type[0].toUpperCase() + type.slice(1)}</option>`).join("")}</select></label>
+          <label>Direct media URL<input ${prefix}url" value="${esc(media.url || "")}" placeholder="https://…/file.jpg"></label>
+          <label>Neutral alt text<input ${prefix}alt" value="${esc(media.alt || "")}"></label>
+          <label>Provider<input ${prefix}provider" value="${esc(media.provider || "")}"></label>
+          <label>Creator credit<input ${prefix}credit" value="${esc(media.credit || "")}"></label>
+          <label>License<input ${prefix}license" value="${esc(media.license || "")}"></label>
+          <label>Source page<input ${prefix}source" value="${esc(media.source || "")}" placeholder="https://…"></label>
+        </div>`;
+      }
+      function renderDesigner() {
+        const round = designerGame[designerRound],
+          roundName =
+            designerRound === "jeopardy" ? "Jeopardy" : "Double Jeopardy";
+        $("designerRoot").innerHTML = `
+          <label>Game title<input data-designer="title" value="${esc(designerGame.title)}"></label>
+          <div class="designerToolbar designerTabs">
+            <button type="button" data-designer-action="round" data-round="jeopardy" class="secondary ${designerRound === "jeopardy" ? "active" : ""}">Jeopardy</button>
+            <button type="button" data-designer-action="round" data-round="doubleJeopardy" class="secondary ${designerRound === "doubleJeopardy" ? "active" : ""}">Double Jeopardy</button>
+          </div>
+          <h4>${roundName} categories</h4>
+          <div id="designerCategories">${round.categories
+            .map(
+              (category, categoryIndex) => `
+            <details class="designerCategory" data-category="${categoryIndex}" ${categoryIndex === 0 ? "open" : ""}>
+              <summary>Category ${categoryIndex + 1}: ${esc(category.name || "Untitled")}</summary>
+              <div class="designerCategoryBody">
+                <label>Category name<input data-designer="category-name" value="${esc(category.name)}"></label>
+                ${category.clues
+                  .map((pair, clueIndex) => {
+                    const media = pair[2] || {};
+                    return `<div class="designerClue" data-clue="${clueIndex}">
+                    <strong>Clue ${clueIndex + 1} · $${(clueIndex + 1) * 200 * (designerRound === "doubleJeopardy" ? 2 : 1)}</strong>
+                    <div class="designerClueMain">
+                      <label>Clue<textarea data-designer="clue">${esc(pair[0])}</textarea></label>
+                      <label>Canonical answer<textarea data-designer="answer">${esc(pair[1])}</textarea></label>
+                    </div>
+                    <details><summary>${media.url ? "Media attached" : "Optional media"}</summary>${designerMediaFields(media)}</details>
+                    <div class="designerActions"><span></span><button type="button" class="red" data-designer-action="remove-clue">Remove clue</button></div>
+                  </div>`;
+                  })
+                  .join("")}
+                <div class="designerActions"><button type="button" class="secondary" data-designer-action="add-clue">Add clue</button><button type="button" class="red" data-designer-action="remove-category">Remove category</button></div>
+              </div>
+            </details>`,
+            )
+            .join("")}</div>
+          <button type="button" class="secondary" data-designer-action="add-category">Add category</button>
+          <hr><h4>Final Jeopardy</h4>
+          <div class="designerFinalGrid">
+            <label>Category<input data-final="category" value="${esc(designerGame.final.category)}"></label>
+            <label>Canonical answer<input data-final="answer" value="${esc(designerGame.final.answer)}"></label>
+          </div>
+          <label>Clue<textarea data-final="clue">${esc(designerGame.final.clue)}</textarea></label>
+          <details class="designerCategory"><summary>Optional Final Jeopardy media</summary><div class="designerCategoryBody">${designerMediaFields(designerGame.final.media || {}, "final")}</div></details>
+          <p id="designerStatus" class="muted">${round.categories.length} categories · ${round.categories.reduce((sum, category) => sum + category.clues.length, 0)} clues in this round</p>`;
+      }
+      function designerPair(target) {
+        const categoryIndex = Number(
+            target.closest("[data-category]")?.dataset.category,
+          ),
+          clueIndex = Number(target.closest("[data-clue]")?.dataset.clue);
+        return designerGame[designerRound].categories[categoryIndex]?.clues[
+          clueIndex
+        ];
+      }
+      $("designerRoot").oninput = (event) => {
+        const target = event.target,
+          binding = target.dataset.designer;
+        if (binding === "title") {
+          designerGame.title = target.value;
+          designerGame.jeopardy.title = target.value;
+          designerGame.doubleJeopardy.title = target.value;
+        } else if (binding === "category-name") {
+          const index = Number(
+            target.closest("[data-category]").dataset.category,
+          );
+          designerGame[designerRound].categories[index].name = target.value;
+        } else if (binding === "clue") designerPair(target)[0] = target.value;
+        else if (binding === "answer") designerPair(target)[1] = target.value;
+        else if (target.dataset.media) {
+          const pair = designerPair(target),
+            field = target.dataset.media;
+          if (field === "type" && target.value === "none") pair.splice(2, 1);
+          else {
+            pair[2] ||= { type: "image", url: "", alt: "" };
+            pair[2][field] = target.value;
+          }
+        } else if (target.dataset.final)
+          designerGame.final[target.dataset.final] = target.value;
+        else if (target.dataset.finalMedia) {
+          const field = target.dataset.finalMedia;
+          if (field === "type" && target.value === "none")
+            delete designerGame.final.media;
+          else {
+            designerGame.final.media ||= { type: "image", url: "", alt: "" };
+            designerGame.final.media[field] = target.value;
+          }
+        }
+        designerStatus("Unsaved changes");
+      };
+      $("designerRoot").onclick = (event) => {
+        const button = event.target.closest("[data-designer-action]");
+        if (!button) return;
+        const actionName = button.dataset.designerAction,
+          categoryIndex = Number(
+            button.closest("[data-category]")?.dataset.category,
+          ),
+          clueIndex = Number(button.closest("[data-clue]")?.dataset.clue),
+          categories = designerGame[designerRound].categories;
+        if (actionName === "round") designerRound = button.dataset.round;
+        if (actionName === "add-category" && categories.length < 8)
+          categories.push(blankCategory(categories.length));
+        if (actionName === "remove-category" && categories.length > 1)
+          categories.splice(categoryIndex, 1);
+        if (
+          actionName === "add-clue" &&
+          categories[categoryIndex].clues.length < 8
+        )
+          categories[categoryIndex].clues.push(["", ""]);
+        if (
+          actionName === "remove-clue" &&
+          categories[categoryIndex].clues.length > 1
+        )
+          categories[categoryIndex].clues.splice(clueIndex, 1);
+        renderDesigner();
+      };
+      $("designerNew").onclick = () => {
+        if (!confirm("Replace the designer contents with a blank 6×5 game?"))
+          return;
+        designerGame = blankDesignerGame();
+        designerRound = "jeopardy";
+        renderDesigner();
+      };
+      $("designerFromRoom").onclick = () =>
+        socket.emit("exportGame", {}, (r) => {
+          if (!r?.ok) return notice(r?.error || "Could not read current game");
+          designerGame = normalizeDesignerGame(r.game);
+          renderDesigner();
+          designerStatus("Current game copied into the designer");
+        });
+      $("designerUpload").onclick = () => $("designerFile").click();
+      $("designerFile").onchange = async () => {
+        try {
+          designerGame = normalizeDesignerGame(
+            await readJsonFile($("designerFile")),
+          );
+          designerRound = "jeopardy";
+          renderDesigner();
+          designerStatus("JSON loaded into the designer");
+        } catch (error) {
+          notice("Invalid designer JSON: " + error.message);
+        }
+      };
+      $("designerDownload").onclick = () => {
+        const blob = new Blob([JSON.stringify(designerGame, null, 2)], {
+            type: "application/json",
+          }),
+          url = URL.createObjectURL(blob),
+          a = document.createElement("a"),
+          name = (designerGame.title || "quizdock-custom-game")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "");
+        a.href = url;
+        a.download = (name || "quizdock-custom-game") + ".json";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        designerStatus("Designer JSON downloaded");
+      };
+      $("designerLoad").onclick = () => {
+        $("boardJson").value = JSON.stringify(designerGame, null, 2);
+        importFullGame(designerGame, (r) =>
+          designerStatus(
+            r?.ok
+              ? "Designed game loaded into the room"
+              : r?.error || "Game validation failed",
+          ),
         );
+      };
+      renderDesigner();
       $("importBoard").onclick = () => {
         try {
           importFullGame(JSON.parse($("boardJson").value));

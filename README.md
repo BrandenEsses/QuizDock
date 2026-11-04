@@ -1,4 +1,4 @@
-# QuizDock v2.1
+# QuizDock v2.2
 
 Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, contestant-controlled Autohost games, Daily Doubles, sound cues, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, reusable game JSON/ZIP bundles, provider-backed native media clues, Cast V4, and private rejoin links.
 
@@ -46,16 +46,42 @@ In Automated host mode, Jeopardy and Double Jeopardy each receive a ten-minute r
 
 Use **Download game JSON** to save the current two rounds, Final Jeopardy, media references, and generation settings. **Download game + media ZIP** adds `game.json`, a README, and every local media asset used by the game. Custom external HTTPS media remains remote and is listed in the bundle README. **Load game JSON** restores the saved game. **Load generation settings** only repopulates the AI form, allowing edits and a completely new generation without loading the old clues. Daily Double locations are randomized afresh when a game is loaded.
 
+The host setup screen also includes a **Visual board designer**. Start with a blank 6-category by 5-clue board, edit either round, add or remove categories and clues, fill in Final Jeopardy, and optionally attach image, audio, or video metadata. **Edit current game** copies the room's current board into the form. The designer can upload an existing QuizDock JSON file, download the work in progress as reusable JSON, or validate and load it directly into the room. Empty clues and invalid media URLs can still be saved as a draft, but must pass the normal game validator before they can be played.
+
 Custom game import format (the two rounds must be distinct):
 
 ```json
-{"title":"Physics","jeopardy":{"categories":[{"name":"Units","clues":[["SI unit of force","newton"]]}]},"doubleJeopardy":{"categories":[{"name":"Poetry","clues":[["A fourteen-line form","sonnet"]]}]},"final":{"clue":"This city is Mongolia's capital.","answer":"Ulaanbaatar"}}
+{
+  "title": "Physics",
+  "jeopardy": {
+    "categories": [
+      { "name": "Units", "clues": [["SI unit of force", "newton"]] }
+    ]
+  },
+  "doubleJeopardy": {
+    "categories": [
+      { "name": "Poetry", "clues": [["A fourteen-line form", "sonnet"]] }
+    ]
+  },
+  "final": {
+    "clue": "This city is Mongolia's capital.",
+    "answer": "Ulaanbaatar"
+  }
+}
 ```
 
 Custom games may add image, audio, or video media as the third clue item. Media URLs must use HTTPS or begin with `/downloads/`; generated games intentionally do not invent media URLs.
 
 ```json
-["Identify this instrument from the clip.", "theremin", {"type":"audio", "url":"https://example.org/theremin.mp3", "alt":"Short instrument clip"}]
+[
+  "Identify this instrument from the clip.",
+  "theremin",
+  {
+    "type": "audio",
+    "url": "https://example.org/theremin.mp3",
+    "alt": "Short instrument clip"
+  }
+]
 ```
 
 The text remains the actual clue (for example, “What song is this?”), while the third item supplies the accompanying media. QuizDock uses native `<img>`, `<audio>`, and `<video>` elements instead of arbitrary iframes so saved games remain portable and untrusted pages cannot run inside the game. The built-in sample game contains a packaged image clue so this behavior can be tested without an external URL. Provider media must now match every significant word in the canonical answer's provider label/tags; unmatched results are discarded rather than attached. Once an asset passes that check, QuizDock replaces the original clue with a media-dependent identification prompt so the asset is essential rather than decorative. For every board media clue, the contestant who selected it receives a **Show / play media** control. The host, TV, and other contestants wait on the text prompt; the media and response timers are released together only after that contestant taps the button. On a media Daily Double, this happens after the wager and before its separate reading interval.
@@ -68,13 +94,11 @@ Board generation reports rough progress. When local validation identifies a dupl
 
 This is an experimental prototype, not a public production service. Room state is in memory and lost on restart. There are no rate limits or server-side board persistence. Generation uses one schema-constrained, self-audited AI pass plus local structural, answer-leakage, and similarity validation; a failed local check can trigger a full retry. AI output can still be wrong, so review important games before play. Matching requests are cached in memory for one hour by default. Network latency determines buzzer arrival order. Protect port 3000 with LAN/VPN until hardened.
 
-
 ## v0.4: TV spectator and handwritten Final Jeopardy
 
 Open `https://quizdock.ble.dev/display/ROOMCODE` in Chrome and use Chrome's Cast tab feature to send the clean board and contestant scores to a Chromecast. This is browser tab casting, not a native Google Cast receiver. Spectators are read-only.
 
 During Final Jeopardy, players may write on a touch canvas or type a response. The host sees the original handwritten image and may request an AI transcription/judging **suggestion**, then independently accepts or rejects each response. Handwriting images are sent to OpenAI only when the host requests an AI suggestion. They remain in server memory for the life of the room. Do not use this build for public internet rooms: host socket authentication and rate limits are not production hardened.
-
 
 ## Chromecast / Google TV Streamer (v0.5)
 
@@ -86,8 +110,8 @@ During Final Jeopardy, players may write on a touch canvas or type a response. T
 
 QuizDock requests the `VIDEO_OUT` receiver capability so the native picker excludes audio-only speakers. An unpublished Custom Receiver is visible only to Cast devices registered in the same Google Cast Developer Console account; publish the receiver to make it available to all compatible display devices. The TV-only tab remains the fallback for tab casting.
 
-
 ## v0.6 display fixes
+
 - Host keeps the category board visible while a clue is active; clue panel is separate from hidden setup controls.
 - Player clue text stays on screen during buzz, answer, and judging phases.
 - Cast diagnostics explain desktop Chrome and LAN discovery limitations. This release does **not** solve unsupported Android Chrome native sender discovery or network isolation.
@@ -99,6 +123,6 @@ Host sessions use a secret token saved in the host browser localStorage. Returni
 
 **Casting limitation:** Native Google Cast Web Sender discovery is supported by desktop Chrome, not reliably by Chrome on Android. A registered Cast app ID alone cannot make Android Chrome discover devices. For now use a desktop Chrome tab cast of `/display/ROOMCODE`, or open that spectator URL directly in a TV browser. An Android-native Cast sender app would be needed for a robust one-tap Cast picker on phones.
 
-
 ## v0.8 host reconnection fixes
+
 The host token is now saved at room creation and retained on every resume. The server includes the token in resume acknowledgements. Reconnect attempts use a timeout and host actions wait until authorization is restored. Existing rooms created under v0.7 may lack a saved token; create a fresh room after updating. Android Chrome is not a supported native Google Cast web sender; use desktop Chrome's Cast tab for now, or a future Android native sender.
