@@ -1,4 +1,4 @@
-# QuizDock v2.2
+# QuizDock v2.2.1
 
 Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, contestant-controlled Autohost games, Daily Doubles, sound cues, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, reusable game JSON/ZIP bundles, provider-backed native media clues, Cast V4, and private rejoin links.
 
@@ -46,7 +46,7 @@ In Automated host mode, Jeopardy and Double Jeopardy each receive a ten-minute r
 
 Use **Download game JSON** to save the current two rounds, Final Jeopardy, media references, and generation settings. **Download game + media ZIP** adds `game.json`, a README, and every local media asset used by the game. Custom external HTTPS media remains remote and is listed in the bundle README. **Load game JSON** restores the saved game. **Load generation settings** only repopulates the AI form, allowing edits and a completely new generation without loading the old clues. Daily Double locations are randomized afresh when a game is loaded.
 
-The host setup screen also includes a **Visual board designer**. Start with a blank 6-category by 5-clue board, edit either round, add or remove categories and clues, fill in Final Jeopardy, and optionally attach image, audio, or video metadata. **Edit current game** copies the room's current board into the form. The designer can upload an existing QuizDock JSON file, download the work in progress as reusable JSON, or validate and load it directly into the room. Empty clues and invalid media URLs can still be saved as a draft, but must pass the normal game validator before they can be played.
+The landing page includes a **Design a custom board** workspace that does not create a game room. Start with a blank 6-category by 5-clue board, edit either round, add or remove categories and clues, fill in Final Jeopardy, and optionally attach image, audio, or video metadata. The designer can upload an existing QuizDock JSON file or download the work in progress as reusable JSON without starting a game. **Start room with this game** validates the finished design and creates a host room only when it is time to play. Inside an existing host room, **Edit current game** copies the room's current board into the same form. Empty clues and invalid media URLs can still be saved as a draft, but must pass the normal game validator before they can be played.
 
 Custom game import format (the two rounds must be distinct):
 

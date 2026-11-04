@@ -16,6 +16,17 @@ test("host setup includes a visual board designer", () => {
   assert.match(html, /Final Jeopardy/);
 });
 
+test("landing page opens the designer without creating a room", () => {
+  assert.match(html, /id="openDesigner"/);
+  assert.match(html, /id="designerWorkspace"/);
+  assert.match(html, /showStandaloneDesigner/);
+  assert.match(
+    html,
+    /Design and download a complete board without creating a room/,
+  );
+  assert.match(html, /Start room with this game/);
+});
+
 test("designer can upload, download, and load game JSON", () => {
   assert.match(html, /id="designerUpload"/);
   assert.match(html, /id="designerDownload"/);

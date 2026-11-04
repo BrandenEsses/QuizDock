@@ -406,7 +406,12 @@
     <h1>⚡ QuizDock</h1>
     <div id="entry" class="panel">
       <h2>Start or join a game</h2>
-      <div class="row"><button id="create">Create host room</button></div>
+      <div class="row">
+        <button id="create">Create host room</button
+        ><button id="openDesigner" class="secondary">
+          Design a custom board
+        </button>
+      </div>
       <hr />
       <label
         >Room code<input
@@ -420,6 +425,17 @@
           maxlength="24"
           placeholder="Player name" /></label
       ><button id="join">Join game</button>
+    </div>
+    <div id="designerWorkspace" class="hide">
+      <div class="row">
+        <button id="closeDesigner" class="secondary">← Back</button>
+        <h2>Custom board designer</h2>
+      </div>
+      <p class="muted">
+        Design and download a complete board without creating a room. Start a
+        room only when you are ready to play it.
+      </p>
+      <div id="designerMount"></div>
     </div>
     <div id="game" class="hide">
       <details id="rejoinLinks" class="panel hide" style="margin: 12px 0">
@@ -634,7 +650,8 @@
         mode = "",
         myId = "",
         token = "",
-        hostReady = false;
+        hostReady = false,
+        standaloneDesigner = false;
       const hostStorageKey = "quizdock-host";
       const playerStorageKey = "quizdock-session";
       function linkFor(role, code, credential) {
@@ -795,13 +812,48 @@
         socket.emit(event, payload);
       };
       function show() {
+        const wasStandaloneDesigner = standaloneDesigner;
+        standaloneDesigner = false;
+        $("designerWorkspace").classList.add("hide");
+        $("setup").append($("designerPanel"));
+        $("designerFromRoom").classList.remove("hide");
+        $("designerLoad").textContent = "Load designed game";
         $("entry").classList.add("hide");
         $("game").classList.remove("hide");
         $("host").classList.toggle("hide", mode !== "host");
         $("player").classList.toggle("hide", mode !== "player");
         $("role").textContent = mode === "host" ? "Host" : "Player";
         updateRejoinLink();
+        if (
+          wasStandaloneDesigner &&
+          new URLSearchParams(location.search).get("design") === "1"
+        )
+          history.replaceState({}, "", "/");
       }
+      function showStandaloneDesigner(updateUrl = true) {
+        standaloneDesigner = true;
+        $("entry").classList.add("hide");
+        $("game").classList.add("hide");
+        $("designerWorkspace").classList.remove("hide");
+        $("designerMount").append($("designerPanel"));
+        $("designerFromRoom").classList.add("hide");
+        $("designerLoad").textContent = "Start room with this game";
+        if (updateUrl) history.pushState({}, "", "/?design=1");
+      }
+      $("openDesigner").onclick = () => showStandaloneDesigner();
+      function closeStandaloneDesigner(updateUrl = true) {
+        standaloneDesigner = false;
+        $("designerWorkspace").classList.add("hide");
+        $("setup").append($("designerPanel"));
+        $("entry").classList.remove("hide");
+        if (updateUrl) history.pushState({}, "", "/");
+      }
+      $("closeDesigner").onclick = () => closeStandaloneDesigner();
+      window.addEventListener("popstate", () => {
+        if (new URLSearchParams(location.search).get("design") === "1")
+          showStandaloneDesigner(false);
+        else if (standaloneDesigner) closeStandaloneDesigner(false);
+      });
       $("create").onclick = () =>
         socket.emit("create", {}, (r) => {
           if (!r?.ok) return notice("Unable to create room");
@@ -1273,13 +1325,27 @@
       };
       $("designerLoad").onclick = () => {
         $("boardJson").value = JSON.stringify(designerGame, null, 2);
-        importFullGame(designerGame, (r) =>
-          designerStatus(
-            r?.ok
-              ? "Designed game loaded into the room"
-              : r?.error || "Game validation failed",
-          ),
-        );
+        const load = () =>
+          importFullGame(designerGame, (r) =>
+            designerStatus(
+              r?.ok
+                ? "Designed game loaded into the room"
+                : r?.error || "Game validation failed",
+            ),
+          );
+        if (!standaloneDesigner) return load();
+        socket.emit("create", {}, (r) => {
+          if (!r?.ok) return notice("Unable to create room");
+          mode = "host";
+          hostReady = true;
+          localStorage.setItem(
+            hostStorageKey,
+            JSON.stringify({ code: r.code, hostToken: r.hostToken }),
+          );
+          show();
+          rememberLink("host", r.code, r.hostToken);
+          load();
+        });
       };
       renderDesigner();
       $("importBoard").onclick = () => {
@@ -2244,7 +2310,8 @@
         mode = "player";
         show();
         if (socket.connected) resumePlayer(saved);
-      }
+      } else if (params.get("design") === "1" && !tvCode)
+        showStandaloneDesigner(false);
     </script>
     <script
       src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"
