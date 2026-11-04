@@ -21,6 +21,8 @@ test('accepts safe media clues',()=>{const game=valid();game.jeopardy.categories
 
 test('accepts packaged media clues',()=>{const game=valid();game.jeopardy.categories[0].clues=[['Identify this element.','gold',{type:'image',url:'/media/gold-bars.svg',alt:'Gold bars'}]];assert.equal(validateGamePackage(game).jeopardy.categories[0].clues[0][2].url,'/media/gold-bars.svg')});
 
+test('retains safe media attribution',()=>{const game=valid();game.jeopardy.categories[0].clues=[['Identify this instrument.','theremin',{type:'audio',url:'/downloads/generated/theremin.mp3',credit:'Sound by Clara',license:'CC0',provider:'Freesound',source:'https://freesound.org/s/1/'}]];const media=validateGamePackage(game).jeopardy.categories[0].clues[0][2];assert.equal(media.credit,'Sound by Clara');assert.equal(media.source,'https://freesound.org/s/1/')});
+
 test('rejects unsafe media URLs',()=>{const game=valid();game.jeopardy.categories[0].clues=[['Identify this work.','Guernica',{type:'image',url:'javascript:alert(1)'}]];assert.throws(()=>validateGamePackage(game),/media URL/i)});
 
 test('rejects incomplete final',()=>{const game=valid();game.final.answer='';assert.throws(()=>validateGamePackage(game),/Final Jeopardy/i)});

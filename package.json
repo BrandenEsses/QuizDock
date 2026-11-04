@@ -1,1 +1,1 @@
-{"name":"quizdock","version":"1.9.0","private":true,"type":"module","scripts":{"start":"node server.js","test":"node --test test/game-content.test.js","test:integration":"node test/socket-flow.mjs"},"dependencies":{"express":"^4.21.2","socket.io":"^4.8.1"}}
+{"name":"quizdock","version":"2.0.0","private":true,"type":"module","scripts":{"start":"node server.js","test":"node --test test/game-content.test.js","test:integration":"node test/socket-flow.mjs"},"dependencies":{"archiver":"^7.0.1","express":"^4.21.2","socket.io":"^4.8.1"}}

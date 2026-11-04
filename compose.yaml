@@ -5,7 +5,7 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      - ./downloads:/app/downloads:ro
+      - ./downloads:/app/downloads
     environment:
       PORT: "3000"
       MAX_PLAYERS: "${MAX_PLAYERS:-8}"
@@ -26,6 +26,8 @@ services:
       DAILY_DOUBLE_ANSWER_SECONDS: "${DAILY_DOUBLE_ANSWER_SECONDS:-5}"
       CAST_APP_ID: "${CAST_APP_ID:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      PEXELS_API_KEY: "${PEXELS_API_KEY:-}"
+      FREESOUND_API_KEY: "${FREESOUND_API_KEY:-}"
 
   apk-builder:
     profiles: ["build-apk"]
