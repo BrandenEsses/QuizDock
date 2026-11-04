@@ -1,6 +1,6 @@
-# QuizDock v1.6
+# QuizDock v1.7
 
-Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, custom game JSON, Cast V4, Android sender sources, and private rejoin links. No narration.
+Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, contestant-controlled Autohost games, Daily Doubles, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, reusable game JSON, Cast V4, Android sender sources, and private rejoin links. No narration.
 
 ## Deploy
 
@@ -27,7 +27,11 @@ The server sends AI requests; player browsers never receive the key. AI board ge
 
 ## Play
 
-Host creates a room. For solo, press **Enable single-player** before anyone joins. For multiplayer, players join from their phones and buzz in. Reading, buzzing, and answering have automatic countdowns. In manual-host mode, AI suggestions remain advisory and the human host chooses Correct/Incorrect or Accept/Reject. **Automated host** mode selects clues, advances rounds, and applies clear AI decisions automatically; uncertain decisions do not change the score. If AI is unavailable, automated mode reveals the answer without changing the score.
+Host creates a room. For solo, press **Enable single-player** before anyone joins. For multiplayer, players join from their phones and buzz in. Reading, buzzing, and answering have automatic countdowns. In manual-host mode, AI suggestions remain advisory and the human host chooses Correct/Incorrect or Accept/Reject. In **Automated host** mode, a random contestant chooses the first clue from a phone-friendly board; control then passes to the last contestant with a correct response. Autohost handles timers, round advancement, and clear AI scoring decisions. Uncertain decisions do not change the score, and if AI is unavailable Autohost reveals the answer without changing the score.
+
+Each standard 30-clue game hides one Daily Double in Jeopardy and two in Double Jeopardy. Only the contestant who selected it can wager and answer. The wager is $5 through the greater of that contestant's score or $1,000 in Jeopardy/$2,000 in Double Jeopardy; the response window is five seconds.
+
+Use **Download game JSON** to save the current two rounds, Final Jeopardy, media references, and generation settings. **Load game JSON** restores the saved game. **Load generation settings** only repopulates the AI form, allowing edits and a completely new generation without loading the old clues. Daily Double locations are randomized afresh when a game is loaded.
 
 Custom game import format (the two rounds must be distinct):
 
@@ -43,7 +47,7 @@ Custom games may add image, audio, or video media as the third clue item. Media 
 
 ## Important limitations
 
-This is an experimental prototype, not a public production service. Room state is in memory and lost on restart. There are no rate limits or board persistence. Generation uses one schema-constrained, self-audited AI pass plus local structural, answer-leakage, and similarity validation; a failed local check can trigger a full retry. AI output can still be wrong, so review important games before play. Matching requests are cached in memory for one hour by default. The host opens buzzers and makes every scoring decision. Network latency determines buzzer arrival order. Protect port 3000 with LAN/VPN until hardened.
+This is an experimental prototype, not a public production service. Room state is in memory and lost on restart. There are no rate limits or server-side board persistence. Generation uses one schema-constrained, self-audited AI pass plus local structural, answer-leakage, and similarity validation; a failed local check can trigger a full retry. AI output can still be wrong, so review important games before play. Matching requests are cached in memory for one hour by default. Network latency determines buzzer arrival order. Protect port 3000 with LAN/VPN until hardened.
 
 
 ## v0.4: TV spectator and handwritten Final Jeopardy
