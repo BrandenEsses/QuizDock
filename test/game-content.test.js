@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateGamePackage} from '../game-content.js';
+
+const category=(name,clue,answer)=>({name,clues:[[clue,answer]]});
+const valid=()=>({title:'Test',jeopardy:{categories:[category('Physics','The SI unit of force.','newton')]},doubleJeopardy:{categories:[category('Poetry','A fourteen-line verse form.','sonnet')]},final:{clue:'This city is the capital of Mongolia.','answer':'Ulaanbaatar'}});
+
+test('accepts distinct rounds and content',()=>assert.equal(validateGamePackage(valid(),{categories:1,rows:1}).doubleJeopardy.categories[0].name,'Poetry'));
+
+test('rejects reused category concepts across rounds',()=>{const game=valid();game.doubleJeopardy.categories[0].name='Advanced Physics';assert.throws(()=>validateGamePackage(game),/categories are too similar/i)});
+
+test('rejects paraphrased clue duplication',()=>{const game=valid();game.doubleJeopardy.categories[0].clues=[['Name the SI force unit.','pascal']];assert.throws(()=>validateGamePackage(game),/similar clues/i)});
+
+test('rejects semantically repeated answers',()=>{const game=valid();game.doubleJeopardy.categories[0].clues=[['The force unit named for an English scientist.','the newton']];assert.throws(()=>validateGamePackage(game),/similar answers/i)});
+
+test('rejects incomplete final',()=>{const game=valid();game.final.answer='';assert.throws(()=>validateGamePackage(game),/Final Jeopardy/i)});

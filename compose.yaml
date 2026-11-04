@@ -1,0 +1,35 @@
+services:
+  quizdock:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./downloads:/app/downloads:ro
+    environment:
+      PORT: "3000"
+      MAX_PLAYERS: "${MAX_PLAYERS:-8}"
+      OPENAI_BOARD_MODEL: "${OPENAI_BOARD_MODEL:-gpt-6.1-sol}"
+      OPENAI_BOARD_REASONING: "${OPENAI_BOARD_REASONING:-high}"
+      OPENAI_JUDGE_MODEL: "${OPENAI_JUDGE_MODEL:-gpt-6-luna}"
+      OPENAI_JUDGE_REASONING: "${OPENAI_JUDGE_REASONING:-low}"
+      AI_GENERATION_ATTEMPTS: "${AI_GENERATION_ATTEMPTS:-2}"
+      CLUE_SECONDS: "${CLUE_SECONDS:-12}"
+      ANSWER_SECONDS: "${ANSWER_SECONDS:-15}"
+      READING_SECONDS: "${READING_SECONDS:-5}"
+      CAST_APP_ID: "${CAST_APP_ID:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+
+  apk-builder:
+    profiles: ["build-apk"]
+    build:
+      context: .
+      dockerfile: Dockerfile.android-build
+    working_dir: /workspace
+    environment:
+      GRADLE_USER_HOME: /buildhome/gradle
+    volumes:
+      - ./android:/workspace
+      - ./.android-build-home:/buildhome
+      - ./downloads:/output
+    command: ["bash", "-lc", "set -e; mkdir -p /buildhome/.android; ln -sfn /buildhome/.android /root/.android; gradle --no-daemon :app:assembleDebug; install -m 644 app/build/outputs/apk/debug/app-debug.apk /output/quizdock.apk; sha256sum /output/quizdock.apk"]

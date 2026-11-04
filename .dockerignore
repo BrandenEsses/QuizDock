@@ -1,0 +1,5 @@
+.env
+.android-build-home
+android/.gradle
+android/app/build
+*.zip
