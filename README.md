@@ -1,4 +1,4 @@
-# QuizDock v2.0
+# QuizDock v2.1
 
 Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, contestant-controlled Autohost games, Daily Doubles, sound cues, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, reusable game JSON/ZIP bundles, provider-backed native media clues, Cast V4, and private rejoin links.
 
@@ -42,6 +42,8 @@ Host creates a room. For solo, press **Enable single-player** before anyone join
 
 Each standard 30-clue game hides one Daily Double in Jeopardy and two in Double Jeopardy. Only the contestant who selected it can wager and answer. The wager is $5 through the greater of that contestant's score or $1,000 in Jeopardy/$2,000 in Double Jeopardy. After wagering, the clue is shown for six seconds of reading time before the five-second response window begins. Both intervals are configurable.
 
+In Automated host mode, Jeopardy and Double Jeopardy each receive a ten-minute round clock (`ROUND_SECONDS=600`). The remaining round time appears on host, contestant, TV-only, and Cast receiver screens; expiry plays the timeout cue and advances the game. Standard answers, Final wagers, and typed Final responses are privately saved while the contestant types so another contestant's submission cannot clear the form, and a typed standard answer is automatically submitted when its answer window expires.
+
 Use **Download game JSON** to save the current two rounds, Final Jeopardy, media references, and generation settings. **Download game + media ZIP** adds `game.json`, a README, and every local media asset used by the game. Custom external HTTPS media remains remote and is listed in the bundle README. **Load game JSON** restores the saved game. **Load generation settings** only repopulates the AI form, allowing edits and a completely new generation without loading the old clues. Daily Double locations are randomized afresh when a game is loaded.
 
 Custom game import format (the two rounds must be distinct):
@@ -56,7 +58,7 @@ Custom games may add image, audio, or video media as the third clue item. Media 
 ["Identify this instrument from the clip.", "theremin", {"type":"audio", "url":"https://example.org/theremin.mp3", "alt":"Short instrument clip"}]
 ```
 
-The text remains the actual clue (for example, “What song is this?”), while the third item supplies the accompanying media. QuizDock uses native `<img>`, `<audio>`, and `<video>` elements instead of arbitrary iframes so saved games remain portable and untrusted pages cannot run inside the game. The built-in sample game contains a packaged image clue so this behavior can be tested without an external URL. For every board media clue, the contestant who selected it receives a **Show / play media** control. The host, TV, and other contestants wait on the text prompt; the media and response timers are released together only after that contestant taps the button. On a media Daily Double, this happens after the wager and before its separate reading interval.
+The text remains the actual clue (for example, “What song is this?”), while the third item supplies the accompanying media. QuizDock uses native `<img>`, `<audio>`, and `<video>` elements instead of arbitrary iframes so saved games remain portable and untrusted pages cannot run inside the game. The built-in sample game contains a packaged image clue so this behavior can be tested without an external URL. Provider media must now match every significant word in the canonical answer's provider label/tags; unmatched results are discarded rather than attached. Once an asset passes that check, QuizDock replaces the original clue with a media-dependent identification prompt so the asset is essential rather than decorative. For every board media clue, the contestant who selected it receives a **Show / play media** control. The host, TV, and other contestants wait on the text prompt; the media and response timers are released together only after that contestant taps the button. On a media Daily Double, this happens after the wager and before its separate reading interval.
 
 The TV display shows who buzzed, their submitted response, and the correct response after scoring. After every Final Jeopardy response has been scored, it announces the winner or co-winners. Included sound cues cover Daily Doubles, timeouts, round endings, and Final Jeopardy. Browsers require one click or tap before playing sound; use the visible sound button on the host or TV display.
 
@@ -81,6 +83,8 @@ During Final Jeopardy, players may write on a touch canvas or type a response. T
 **Native Cast button:** Register a **Custom Web Receiver** at https://cast.google.com/publish/ and set the receiver URL to `https://quizdock.ble.dev/cast-receiver`. Copy its **application ID** into `/opt/quizdock/.env` as `CAST_APP_ID=...`, then run `docker compose up -d --build`. Google Cast developer registration and receiver approval/device registration may be required for testing. The sender needs a compatible Google Cast-enabled browser and network discovery; on unsupported devices use the TV-only tab. The receiver loads `/display/<room>` independently and receives the room code over the custom Cast namespace. HTTPS and reachability from the Cast device are required.
 
 **Caution:** Native Cast requires real-device validation and has not been hardware-tested here. The host session remains ephemeral: refreshing/disconnecting the host closes the room in this prototype.
+
+QuizDock requests the `VIDEO_OUT` receiver capability so the native picker excludes audio-only speakers. An unpublished Custom Receiver is visible only to Cast devices registered in the same Google Cast Developer Console account; publish the receiver to make it available to all compatible display devices. The TV-only tab remains the fallback for tab casting.
 
 
 ## v0.6 display fixes

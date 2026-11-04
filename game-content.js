@@ -39,10 +39,10 @@ export function validateGamePackage(value,{categories,rows}={}){
   }
   seen.push({clue,answer});
  }
- const finalClue=String(value.final?.clue||'').trim(),finalAnswer=String(value.final?.answer||'').trim(),finalMedia=validateMedia(value.final?.media,'Final Jeopardy');
+ const finalCategory=String(value.final?.category||'Final Jeopardy').trim().slice(0,100)||'Final Jeopardy',finalClue=String(value.final?.clue||'').trim(),finalAnswer=String(value.final?.answer||'').trim(),finalMedia=validateMedia(value.final?.media,'Final Jeopardy');
  if(!finalClue||!finalAnswer)throw Error('Final Jeopardy needs a clue and answer');
  if(seen.some(x=>similar(finalAnswer,x.answer,.72)||similar(finalClue,x.clue,.62)))throw Error('Final Jeopardy repeats an earlier clue or answer');
- return {title:single.title,jeopardy:single,doubleJeopardy:{...double,title:single.title},final:{clue:finalClue.slice(0,1000),answer:finalAnswer.slice(0,1000),...(finalMedia?{media:finalMedia}:{})}};
+ return {title:single.title,jeopardy:single,doubleJeopardy:{...double,title:single.title},final:{category:finalCategory,clue:finalClue.slice(0,1000),answer:finalAnswer.slice(0,1000),...(finalMedia?{media:finalMedia}:{})}};
 }
 
 export function legacyPackage(board){const clean=validateBoard(board);return {title:clean.title,jeopardy:clean,doubleJeopardy:clean,final:{clue:'Final Jeopardy: This optical technique uses a sharp tip to detect evanescent fields at subwavelength scales.',answer:'s-SNOM'}}}

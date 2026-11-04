@@ -120,6 +120,22 @@
         gap: 5px;
         margin: 15px 0;
       }
+      @keyframes boardCellIn {
+        from {
+          opacity: 0;
+          transform: scale(0.72) rotateX(35deg);
+          filter: brightness(2);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1) rotateX(0);
+          filter: brightness(1);
+        }
+      }
+      .board.populating > * {
+        animation: boardCellIn 420ms cubic-bezier(0.2, 0.85, 0.25, 1.2) both;
+        animation-delay: calc(var(--cell-index, 0) * 38ms);
+      }
       .cat,
       .tile {
         min-width: 0;
@@ -305,6 +321,19 @@
       .mediaCredit a {
         color: #d7e2ff;
       }
+      #countdown {
+        font-size: clamp(16px, 2.2vw, 30px);
+        font-weight: 750;
+        padding: 8px 0;
+      }
+      #rejoinLinks {
+        font-size: 0.88rem;
+        margin-top: 28px !important;
+      }
+      #rejoinLinks summary {
+        cursor: pointer;
+        font-weight: 750;
+      }
       body.spectator .scores {
         justify-content: center;
       }
@@ -335,8 +364,8 @@
       ><button id="join">Join game</button>
     </div>
     <div id="game" class="hide">
-      <div id="rejoinLinks" class="panel hide" style="margin: 12px 0">
-        <strong>Private rejoin link</strong>
+      <details id="rejoinLinks" class="panel hide" style="margin: 12px 0">
+        <summary>Private rejoin link</summary>
         <p class="muted">
           Open this link on another device to resume your identity and score.
           Anyone with the link can take over this seat; do not share it
@@ -350,7 +379,7 @@
             style="min-width: 180px; flex: 1"
           /><button id="copyRejoin" type="button">Copy link</button>
         </div>
-      </div>
+      </details>
       <div class="row">
         <h2 id="roomTitle"></h2>
         <span id="role" class="muted"></span>
@@ -504,6 +533,7 @@
     <script>
       const $ = (id) => document.getElementById(id);
       const socket = io();
+      $("game").append($("rejoinLinks"));
       const androidChrome = /Android/i.test(navigator.userAgent);
       const tvCode = location.pathname.match(/^\/display\/(\d{6})\/?$/)?.[1];
       if (tvCode) {
@@ -656,9 +686,10 @@
         const source = /^https:\/\//.test(m.source || "")
           ? ` · <a href="${esc(m.source)}" target="_blank" rel="noopener">source</a>`
           : "";
-        const credit = m.credit || m.license || source
-          ? `<div class="mediaCredit">${esc(m.credit || m.provider || "Media")}${m.license ? " · " + esc(m.license) : ""}${source}</div>`
-          : "";
+        const credit =
+          m.credit || m.license || source
+            ? `<div class="mediaCredit">${esc(m.credit || m.provider || "Media")}${m.license ? " · " + esc(m.license) : ""}${source}</div>`
+            : "";
         if (m.type === "image")
           return `<img class="clueMedia" src="${url}" alt="${alt}" loading="lazy">${credit}`;
         if (m.type === "audio")
@@ -733,45 +764,51 @@
         let btn = $("generate");
         btn.disabled = true;
         $("generateStatus").textContent = " Starting…";
-        socket
-          .timeout(330000)
-          .emit(
-            "generateBoard",
-            {
-              topic: $("topic").value,
-              difficulty: $("difficulty").value,
-              tone: $("tone").value,
-              notes: $("notes").value,
-              categories: Number($("categoryCount").value),
-              rows: Number($("rowCount").value),
-              mediaClues: Number($("mediaClues").value),
-            },
-            (err, r) => {
-              btn.disabled = false;
-              if (err)
-                return ($("generateStatus").textContent =
-                  " Generation timed out; check the room before retrying.");
-              if (r?.ok) {
-                const seconds = Math.round((r.elapsedMs || 0) / 1000),
-                  tokens = (r.inputTokens || 0) + (r.outputTokens || 0),
-                  media = r.mediaAdded
-                    ? ` · ${r.mediaAdded} media clues`
-                    : r.mediaMessage
-                      ? " · text-only (add media API keys)"
-                      : "";
-                $("generateStatus").textContent =
-                  ` Board ready in ${seconds}s${r.cacheHit ? " (cached)" : ""}${tokens ? " · " + tokens.toLocaleString() + " tokens" : ""}${media}!`;
-              } else
-                $("generateStatus").textContent =
-                  " " + (r?.error || "Generation failed");
-            },
-          );
+        socket.timeout(330000).emit(
+          "generateBoard",
+          {
+            topic: $("topic").value,
+            difficulty: $("difficulty").value,
+            tone: $("tone").value,
+            notes: $("notes").value,
+            categories: Number($("categoryCount").value),
+            rows: Number($("rowCount").value),
+            mediaClues: Number($("mediaClues").value),
+          },
+          (err, r) => {
+            btn.disabled = false;
+            if (err)
+              return ($("generateStatus").textContent =
+                " Generation timed out; check the room before retrying.");
+            if (r?.ok) {
+              const seconds = Math.round((r.elapsedMs || 0) / 1000),
+                tokens = (r.inputTokens || 0) + (r.outputTokens || 0),
+                media = r.mediaAdded
+                  ? ` · ${r.mediaAdded} media clues`
+                  : r.mediaMessage
+                    ? " · text-only (add media API keys)"
+                    : "";
+              $("generateStatus").textContent =
+                ` Board ready in ${seconds}s${r.cacheHit ? " (cached)" : ""}${tokens ? " · " + tokens.toLocaleString() + " tokens" : ""}${media}!`;
+            } else
+              $("generateStatus").textContent =
+                " " + (r?.error || "Generation failed");
+          },
+        );
       };
       $("buzz").onclick = () => action("buzz");
       $("sendAnswer").onclick = () => {
-        action("respond", $("answer").value);
-        $("answer").value = "";
+        const button = $("sendAnswer"),
+          value = $("answer").value;
+        button.disabled = true;
+        socket.emit("respond", value, (r) => {
+          button.disabled = false;
+          if (!r?.ok) return notice(r?.error || "Response was not accepted");
+          $("answer").value = "";
+        });
       };
+      $("answer").oninput = () =>
+        socket.emit("answerDraft", $("answer").value, () => {});
       $("answer").onkeydown = (e) => {
         if (e.key === "Enter") $("sendAnswer").click();
       };
@@ -842,16 +879,14 @@
               `<div class="score ${p.id === state.active ? "active" : ""}">${esc(p.name)} ${p.online ? "" : "(offline)"}<strong>$${p.score}</strong>${mode === "host" ? `<button class="secondary" data-score="${p.id}" data-delta="200">+200</button> <button class="secondary" data-score="${p.id}" data-delta="-200">−200</button>` : ""}</div>`,
           )
           .join("");
-        document
-          .querySelectorAll("[data-score]")
-          .forEach(
-            (b) =>
-              (b.onclick = () =>
-                action("score", {
-                  id: b.dataset.score,
-                  delta: Number(b.dataset.delta),
-                })),
-          );
+        document.querySelectorAll("[data-score]").forEach(
+          (b) =>
+            (b.onclick = () =>
+              action("score", {
+                id: b.dataset.score,
+                delta: Number(b.dataset.delta),
+              })),
+        );
         renderFinal();
         if (mode === "host") renderHost();
         if (mode === "player") renderPlayer();
@@ -916,7 +951,8 @@
           setTimeout(() => URL.revokeObjectURL(url), 1000);
         });
       $("downloadBundle").onclick = async () => {
-        const saved = savedHost(), button = $("downloadBundle");
+        const saved = savedHost(),
+          button = $("downloadBundle");
         if (!saved?.code || !saved?.hostToken)
           return notice("Restore the host session before exporting");
         button.disabled = true;
@@ -926,14 +962,24 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ code: saved.code, token: saved.hostToken }),
           });
-          if (!response.ok) throw Error((await response.json()).error || "ZIP export failed");
-          const blob = await response.blob(), url = URL.createObjectURL(blob), a = document.createElement("a");
+          if (!response.ok)
+            throw Error((await response.json()).error || "ZIP export failed");
+          const blob = await response.blob(),
+            url = URL.createObjectURL(blob),
+            a = document.createElement("a");
           a.href = url;
-          a.download = (state?.board?.title || "quizdock-game").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".zip";
+          a.download =
+            (state?.board?.title || "quizdock-game")
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-|-$/g, "") + ".zip";
           a.click();
           setTimeout(() => URL.revokeObjectURL(url), 1000);
-        } catch (error) { notice(error.message); }
-        finally { button.disabled = false; }
+        } catch (error) {
+          notice(error.message);
+        } finally {
+          button.disabled = false;
+        }
       };
       $("loadGame").onclick = () => $("gameFile").click();
       $("gameFile").onchange = async () => {
@@ -999,6 +1045,8 @@
         final: "/sounds/final_jeopardy.mp3",
         roundOver: "/sounds/round-over.mp3",
         timeout: "/sounds/timeout.mp3",
+        appear: "/sounds/appear.mp3",
+        boardFill: "/sounds/board-fill.mp3",
       };
       let currentEffect = null,
         soundUnlocked = false;
@@ -1035,12 +1083,13 @@
       document.addEventListener(
         "pointerdown",
         () => {
-          if (!soundUnlocked && mode !== "player") void unlockSounds();
+          if (!soundUnlocked) void unlockSounds();
         },
         { once: true },
       );
       function playEffect(name) {
-        if (mode === "player" || !soundFiles[name]) return;
+        if ((mode === "player" && name !== "timeout") || !soundFiles[name])
+          return;
         if (!soundUnlocked) {
           tvSoundButton.classList.toggle("hide", !tvCode);
           hostSoundButton.disabled = false;
@@ -1066,9 +1115,16 @@
         if (!previous) return;
         if (next.phase === "dailyWager" && previous.phase !== "dailyWager")
           playEffect("dailyDouble");
-        if (next.round !== previous.round) playEffect("roundOver");
+        if (
+          next.roundTimedOutAt &&
+          next.roundTimedOutAt !== previous.roundTimedOutAt
+        )
+          playEffect("timeout");
+        else if (next.round !== previous.round) playEffect("roundOver");
+        if (next.boardRevision !== previous.boardRevision)
+          playEffect("boardFill");
         if (next.phase === "finalAnswer" && previous.phase !== "finalAnswer")
-          playEffect("final");
+          playEffect("appear");
         const expired =
           previous.deadline && Date.now() >= previous.deadline - 750;
         if (
@@ -1100,18 +1156,49 @@
         const panel = $("finalPanel");
         panel.classList.toggle("hide", !state.phase.startsWith("final"));
         if (!state.phase.startsWith("final")) return;
+        if (
+          mode === "player" &&
+          ((state.phase === "finalWager" &&
+            $("wagerAmount") &&
+            !state.finalWagerIds?.includes(myId)) ||
+            (state.phase === "finalAnswer" &&
+              $("finalCanvas") &&
+              !state.finalSubmittedIds?.includes(myId)))
+        )
+          return;
         if (state.phase === "finalWager") {
-          const already = state.finalWagers?.some((x) => x.id === myId);
+          const already = state.finalWagerIds?.includes(myId);
           panel.innerHTML =
-            "<h2>Final Jeopardy: enter your wager</h2>" +
+            "<h2>Final Jeopardy: " +
+            esc(state.finalCategory) +
+            "</h2><p>Enter your wager.</p>" +
             (myId
               ? already
                 ? "<p>Wager submitted. Waiting for the other contestants.</p>"
                 : '<input id="wagerAmount" type="number" min="0" placeholder="Wager"><button id="wagerSubmit">Submit wager</button>'
               : "<p>Players are submitting wagers privately.</p>");
-          if ($("wagerSubmit"))
-            $("wagerSubmit").onclick = () =>
-              action("wager", { amount: Number($("wagerAmount").value) });
+          if ($("wagerSubmit")) {
+            $("wagerAmount").oninput = () =>
+              socket.emit(
+                "wagerDraft",
+                { amount: $("wagerAmount").value },
+                () => {},
+              );
+            $("wagerSubmit").onclick = () => {
+              const button = $("wagerSubmit");
+              button.disabled = true;
+              socket.emit(
+                "wager",
+                { amount: Number($("wagerAmount").value) },
+                (r) => {
+                  if (!r?.ok) {
+                    button.disabled = false;
+                    notice(r?.error || "Wager was not accepted");
+                  }
+                },
+              );
+            };
+          }
           return;
         }
         if (state.phase === "finalAnswer") {
@@ -1130,7 +1217,9 @@
               ? '<button id="revealFinal" class="secondary">Reveal submitted answers now</button>'
               : "");
           panel.innerHTML =
-            "<h2>Final Jeopardy</h2><p>" +
+            "<h2>Final Jeopardy: " +
+            esc(state.finalCategory) +
+            "</h2><p>" +
             esc(state.clue?.text) +
             "</p>" +
             mediaHtml(state.clue?.media) +
@@ -1179,6 +1268,12 @@
               ctx.fillRect(0, 0, canvas.width, canvas.height);
               ink = false;
             };
+            $("finalAnswer").oninput = () =>
+              socket.emit(
+                "finalDraft",
+                { text: $("finalAnswer").value },
+                () => {},
+              );
             $("finalSubmit").onclick = () => {
               const text = $("finalAnswer").value,
                 button = $("finalSubmit");
@@ -1253,16 +1348,14 @@
                 )
                 .join("")
             : "<p>Waiting for host scoring.</p>");
-        panel
-          .querySelectorAll("[data-final]")
-          .forEach(
-            (b) =>
-              (b.onclick = () =>
-                action("finalScore", {
-                  id: b.dataset.final,
-                  correct: b.dataset.correct === "true",
-                })),
-          );
+        panel.querySelectorAll("[data-final]").forEach(
+          (b) =>
+            (b.onclick = () =>
+              action("finalScore", {
+                id: b.dataset.final,
+                correct: b.dataset.correct === "true",
+              })),
+        );
         panel.querySelectorAll("[data-suggest]").forEach(
           (b) =>
             (b.onclick = () => {
@@ -1287,7 +1380,9 @@
             ? "Double Jeopardy"
             : state.round === "final"
               ? "Final Jeopardy"
-              : "Jeopardy");
+              : "Jeopardy") +
+          " · Room " +
+          state.code;
         $("scores").innerHTML = state.players
           .map(
             (p) =>
@@ -1363,14 +1458,22 @@
             esc(state.answer || "") +
             "</div>";
         const clue = $("tvClue");
-        clue.classList.toggle("hide", !state.clue || phase === "finalReveal");
-        clue.innerHTML = state.clue
-          ? "<div>" +
-            esc(state.clue.text) +
-            "</div>" +
-            mediaHtml(state.clue.media) +
-            status
-          : "";
+        const categoryOnly = phase === "finalWager";
+        clue.classList.toggle(
+          "hide",
+          (!state.clue && !categoryOnly) || phase === "finalReveal",
+        );
+        clue.innerHTML = categoryOnly
+          ? "<div><small>Final Jeopardy category</small><br><strong>" +
+            esc(state.finalCategory) +
+            '</strong><div class="tvStatus">Contestants are placing their wagers.</div></div>'
+          : state.clue
+            ? "<div>" +
+              esc(state.clue.text) +
+              "</div>" +
+              mediaHtml(state.clue.media) +
+              status
+            : "";
         const fin = $("tvFinal");
         fin.classList.toggle("hide", phase !== "finalReveal");
         fin.innerHTML =
@@ -1626,7 +1729,14 @@
         };
         const clue =
           state.clue &&
-          ["mediaReady", "dailyReading", "reading", "buzz", "answer", "judge"].includes(phase)
+          [
+            "mediaReady",
+            "dailyReading",
+            "reading",
+            "buzz",
+            "answer",
+            "judge",
+          ].includes(phase)
             ? "<div>" +
               (state.clue.dailyDouble
                 ? "<strong>DAILY DOUBLE</strong><br>"
@@ -1657,21 +1767,51 @@
       }
       setInterval(() => {
         if (!state) return;
-        const sec = state.deadline
+        const actionSec = state.deadline
           ? Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000))
           : null;
-        $("countdown").textContent =
-          sec === null ? "" : "Time remaining: " + sec + "s";
+        const roundSec =
+          state.autoMode && state.roundDeadline
+            ? Math.max(0, Math.ceil((state.roundDeadline - Date.now()) / 1000))
+            : null;
+        const parts = [];
+        if (roundSec !== null)
+          parts.push(
+            "Round: " +
+              Math.floor(roundSec / 60) +
+              ":" +
+              String(roundSec % 60).padStart(2, "0"),
+          );
+        if (actionSec !== null) parts.push("Action: " + actionSec + "s");
+        $("countdown").textContent = parts.join(" · ");
       }, 200);
+      function animateBoards() {
+        document.querySelectorAll(".board:not(.hide)").forEach((board) => {
+          board.classList.remove("populating");
+          board
+            .querySelectorAll(":scope > *")
+            .forEach((cell, index) =>
+              cell.style.setProperty("--cell-index", index),
+            );
+          void board.offsetWidth;
+          board.classList.add("populating");
+          setTimeout(() => board.classList.remove("populating"), 2400);
+        });
+      }
       socket.on("state", (s) => {
         const previous = state;
         stateEffects(previous, s);
         state = s;
         render();
+        if (
+          (!previous && s.phase === "board") ||
+          s.boardRevision !== previous?.boardRevision
+        )
+          animateBoards();
         if (s.mediaReleased && !previous?.mediaReleased)
-          document.querySelectorAll(".releasedMedia").forEach((media) =>
-            media.play().catch(() => {}),
-          );
+          document
+            .querySelectorAll(".releasedMedia")
+            .forEach((media) => media.play().catch(() => {}));
         if (mode === "host") sendCastRoom();
       });
       socket.on("notice", notice);
