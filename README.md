@@ -1,6 +1,6 @@
-# QuizDock v1.7
+# QuizDock v1.8
 
-Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, contestant-controlled Autohost games, Daily Doubles, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, reusable game JSON, Cast V4, Android sender sources, and private rejoin links. No narration.
+Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, contestant-controlled Autohost games, Daily Doubles, sound cues, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, reusable game JSON, native media clues, Cast V4, and private rejoin links.
 
 ## Deploy
 
@@ -44,6 +44,12 @@ Custom games may add image, audio, or video media as the third clue item. Media 
 ```json
 ["Identify this instrument from the clip.", "theremin", {"type":"audio", "url":"https://example.org/theremin.mp3", "alt":"Short instrument clip"}]
 ```
+
+The text remains the actual clue (for example, “What song is this?”), while the third item supplies the accompanying media. QuizDock uses native `<img>`, `<audio>`, and `<video>` elements instead of arbitrary iframes so saved games remain portable and untrusted pages cannot run inside the game.
+
+The TV display shows who buzzed, their submitted response, and the correct response after scoring. After every Final Jeopardy response has been scored, it announces the winner or co-winners. Included sound cues cover Daily Doubles, timeouts, round endings, and Final Jeopardy.
+
+Board generation reports rough progress. When local validation identifies a duplicated, answer-leaking, or otherwise conflicting clue, QuizDock requests up to three small single-clue replacements before considering a new full-board attempt.
 
 ## Important limitations
 
