@@ -42,8 +42,11 @@ class PollingClient {
         continue;
       }
       if (packet.startsWith("42")) {
-        const message = JSON.parse(packet.slice(2));
+        const match = packet.match(/^42(\d*)(.*)$/),
+          message = JSON.parse(match[2]);
         if (message[0] === "state") this.state = message[1];
+        if (message[0] === "latencyProbe" && match[1])
+          await this.post(`43${match[1]}[]`);
         continue;
       }
       if (packet.startsWith("43")) {
@@ -103,6 +106,23 @@ const p1 = await first.emit("join", { code: created.code, name: "Ada" }),
 assert.equal(p1.ok, true);
 assert.equal(p2.ok, true);
 assert.equal((await host.emit("autoMode", { enabled: true })).ok, true);
+assert.equal(
+  (
+    await host.emit("timerSettings", {
+      clueSeconds: 5,
+      answerSeconds: 5,
+      readingSeconds: 0,
+      dailyDoubleWagerSeconds: 5,
+      dailyDoubleReadingSeconds: 1,
+      dailyDoubleAnswerSeconds: 5,
+      roundSeconds: 60,
+      finalWagerSeconds: 10,
+      finalAnswerSeconds: 10,
+      revealSeconds: 1,
+    })
+  ).ok,
+  true,
+);
 await host.send("start");
 let state = await host.until(
   (s) => s.phase === "board" && s.selector,
@@ -124,15 +144,17 @@ state = await host.until(
   "contestant clue selection",
 );
 assert.equal(state.used.length, 1);
-assert.equal(state.phase, "mediaReady");
 assert.equal(state.hasMedia, true);
-assert.equal(state.clue.media, null);
-assert.equal((await other.emit("releaseMedia")).ok, false);
-assert.equal((await chooser.emit("releaseMedia")).ok, true);
-state = await host.until(
-  (s) => s.phase === "reading" && s.mediaReleased && s.clue.media,
-  "contestant media release",
-);
+if (state.phase === "dailyWager") {
+  const owner = state.dailyDoublePlayer === p1.id ? first : second;
+  assert.equal((await owner.emit("dailyDoubleWager", { amount: 5 })).ok, true);
+  state = await host.until(
+    (s) => s.phase === "dailyReading" && s.mediaReleased,
+    "automatic Daily Double media",
+  );
+}
+assert.equal(state.mediaReleased, true);
+assert.ok(state.clue.media);
 
 const exported = await host.emit("exportGame");
 assert.equal(exported.ok, true);
@@ -159,17 +181,6 @@ await host.until(
   "imported board",
 );
 
-async function releaseIfNeeded(selected) {
-  if (selected.phase !== "mediaReady") return selected;
-  const controller = selected.mediaController === p1.id ? first : second,
-    blocked = selected.mediaController === p1.id ? second : first;
-  assert.equal((await blocked.emit("releaseMedia")).ok, false);
-  assert.equal((await controller.emit("releaseMedia")).ok, true);
-  return host.until(
-    (s) => s.mediaReleased && ["reading", "dailyReading"].includes(s.phase),
-    "released media",
-  );
-}
 async function scanRound(expectedDailyDoubles, testDraftAutosubmit = false) {
   let count = 0,
     transferChecked = false,
@@ -206,10 +217,9 @@ async function scanRound(expectedDailyDoubles, testDraftAutosubmit = false) {
           true,
         );
         selected = await host.until(
-          (s) => s.phase === "dailyReading" || s.phase === "mediaReady",
-          "Daily Double media or reading",
+          (s) => s.phase === "dailyReading",
+          "Daily Double reading",
         );
-        selected = await releaseIfNeeded(selected);
         assert.equal(selected.phase, "dailyReading");
         await host.until(
           (s) =>
@@ -218,7 +228,6 @@ async function scanRound(expectedDailyDoubles, testDraftAutosubmit = false) {
         );
         await host.send("reveal");
       } else {
-        selected = await releaseIfNeeded(selected);
         if (!transferChecked) {
           const responder = selected.selector === p1.id ? second : first,
             responderId = selected.selector === p1.id ? p2.id : p1.id;
@@ -301,6 +310,6 @@ await host.send("finalScore", { id: p2.id, correct: true });
 state = await host.until((s) => s.result?.winners?.length, "winner result");
 assert.ok(state.result.winners.some((x) => [p1.id, p2.id].includes(x.id)));
 console.log(
-  "Socket flow passed: Double Jeopardy submits, draft autosubmit, private Final entries, media release, ZIP export, Daily Doubles, and winner result.",
+  "Socket flow passed: Double Jeopardy submits, draft autosubmit, private Final entries, automatic media, ZIP export, Daily Doubles, and winner result.",
 );
 await delay(20);

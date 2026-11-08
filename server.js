@@ -284,32 +284,68 @@ const GAME_CACHE_LIMIT = Math.max(
 );
 const CLUE_SECONDS = Math.max(
   5,
-  Math.min(90, Number(process.env.CLUE_SECONDS) || 12),
+  Math.min(180, Number(process.env.CLUE_SECONDS) || 24),
 );
 const ANSWER_SECONDS = Math.max(
   5,
-  Math.min(90, Number(process.env.ANSWER_SECONDS) || 15),
+  Math.min(180, Number(process.env.ANSWER_SECONDS) || 30),
 );
 const READING_SECONDS = Math.max(
   0,
-  Math.min(60, Number(process.env.READING_SECONDS) || 5),
+  Math.min(120, Number(process.env.READING_SECONDS) || 10),
 );
 const DAILY_DOUBLE_WAGER_SECONDS = Math.max(
   5,
-  Math.min(60, Number(process.env.DAILY_DOUBLE_WAGER_SECONDS) || 15),
+  Math.min(120, Number(process.env.DAILY_DOUBLE_WAGER_SECONDS) || 30),
 );
 const DAILY_DOUBLE_READING_SECONDS = Math.max(
   0,
-  Math.min(30, Number(process.env.DAILY_DOUBLE_READING_SECONDS) || 6),
+  Math.min(120, Number(process.env.DAILY_DOUBLE_READING_SECONDS) || 12),
 );
 const DAILY_DOUBLE_ANSWER_SECONDS = Math.max(
   5,
-  Math.min(30, Number(process.env.DAILY_DOUBLE_ANSWER_SECONDS) || 5),
+  Math.min(120, Number(process.env.DAILY_DOUBLE_ANSWER_SECONDS) || 10),
 );
 const ROUND_SECONDS = Math.max(
   60,
-  Math.min(3600, Number(process.env.ROUND_SECONDS) || 600),
+  Math.min(7200, Number(process.env.ROUND_SECONDS) || 1200),
 );
+const FINAL_WAGER_SECONDS = Math.max(
+  10,
+  Math.min(300, Number(process.env.FINAL_WAGER_SECONDS) || 60),
+);
+const FINAL_ANSWER_SECONDS = Math.max(
+  10,
+  Math.min(300, Number(process.env.FINAL_ANSWER_SECONDS) || 60),
+);
+const REVEAL_SECONDS = Math.max(
+  1,
+  Math.min(30, Number(process.env.REVEAL_SECONDS) || 6),
+);
+const DEFAULT_TIMER_SETTINGS = Object.freeze({
+  clueSeconds: CLUE_SECONDS,
+  answerSeconds: ANSWER_SECONDS,
+  readingSeconds: READING_SECONDS,
+  dailyDoubleWagerSeconds: DAILY_DOUBLE_WAGER_SECONDS,
+  dailyDoubleReadingSeconds: DAILY_DOUBLE_READING_SECONDS,
+  dailyDoubleAnswerSeconds: DAILY_DOUBLE_ANSWER_SECONDS,
+  roundSeconds: ROUND_SECONDS,
+  finalWagerSeconds: FINAL_WAGER_SECONDS,
+  finalAnswerSeconds: FINAL_ANSWER_SECONDS,
+  revealSeconds: REVEAL_SECONDS,
+});
+const TIMER_LIMITS = Object.freeze({
+  clueSeconds: [5, 180],
+  answerSeconds: [5, 180],
+  readingSeconds: [0, 120],
+  dailyDoubleWagerSeconds: [5, 120],
+  dailyDoubleReadingSeconds: [0, 120],
+  dailyDoubleAnswerSeconds: [5, 120],
+  roundSeconds: [60, 7200],
+  finalWagerSeconds: [10, 300],
+  finalAnswerSeconds: [10, 300],
+  revealSeconds: [1, 30],
+});
 const GENERATED_MEDIA_DIR = path.resolve("downloads/generated");
 fs.mkdirSync(GENERATED_MEDIA_DIR, { recursive: true });
 const gameCache = new Map();
@@ -912,15 +948,9 @@ function publicState(r) {
     deadline: r.deadline || null,
     roundDeadline: r.roundDeadline || null,
     roundTimedOutAt: r.roundTimedOutAt || null,
+    buzzOpensAt: r.buzzOpensAt || null,
     boardRevision: r.boardRevision || 0,
-    settings: {
-      clueSeconds: CLUE_SECONDS,
-      answerSeconds: ANSWER_SECONDS,
-      readingSeconds: READING_SECONDS,
-      dailyDoubleReadingSeconds: DAILY_DOUBLE_READING_SECONDS,
-      dailyDoubleAnswerSeconds: DAILY_DOUBLE_ANSWER_SECONDS,
-      roundSeconds: ROUND_SECONDS,
-    },
+    settings: { ...r.settings },
     code: r.code,
     board: {
       title: board.title,
@@ -984,10 +1014,16 @@ function publicState(r) {
     judging: !!r.judging,
     judgeNote: r.judgeNote || null,
     clarification: r.clarification || null,
+    judgmentRevision: r.judgmentRevision || 0,
+    lastJudgmentCorrect: r.lastJudgmentCorrect ?? null,
   };
 }
 function emit(r) {
   io.to(r.code).emit("state", publicState(r));
+  if (r.host)
+    io.to(r.host).emit("hostPrivate", {
+      answer: r.clue?.answer || null,
+    });
 }
 function error(socket, msg) {
   socket.emit("notice", msg);
@@ -1022,7 +1058,7 @@ function schedule(r, seconds, fn) {
 function startRoundTimer(r) {
   clearRoundTimer(r);
   if (!r.autoMode || r.round === "final") return;
-  r.roundDeadline = Date.now() + ROUND_SECONDS * 1000;
+  r.roundDeadline = Date.now() + r.settings.roundSeconds * 1000;
   r.roundTimer = setTimeout(() => {
     r.roundTimer = null;
     r.roundDeadline = null;
@@ -1030,7 +1066,7 @@ function startRoundTimer(r) {
     r.roundTimedOutAt = Date.now();
     advanceRound(r, true);
     emit(r);
-  }, ROUND_SECONDS * 1000);
+  }, r.settings.roundSeconds * 1000);
 }
 function allCluesUsed(r) {
   return (
@@ -1040,17 +1076,27 @@ function allCluesUsed(r) {
 }
 function finishClue(r) {
   clearTimer(r);
+  clearBuzzArbitration(r);
+  r.buzzOpensAt = null;
   r.phase = "reveal";
   if (r.autoMode)
-    schedule(r, 3, () => {
+    schedule(r, r.settings.revealSeconds, () => {
       resetClue(r);
       if (allCluesUsed(r)) advanceRound(r, true);
     });
 }
+function clearBuzzArbitration(r) {
+  if (r.buzzTimer) clearTimeout(r.buzzTimer);
+  r.buzzTimer = null;
+  r.buzzCandidates = [];
+}
 function startBuzz(r) {
+  const wasReading = r.phase === "reading";
   clearTimer(r);
+  clearBuzzArbitration(r);
   r.phase = "buzz";
-  schedule(r, CLUE_SECONDS, () => finishClue(r));
+  if (!wasReading || !r.buzzOpensAt) r.buzzOpensAt = Date.now();
+  schedule(r, r.settings.clueSeconds, () => finishClue(r));
 }
 function acceptResponse(r, id, answer) {
   if (r.phase !== "answer" || r.active !== id || r.submitted !== null)
@@ -1076,9 +1122,11 @@ function acceptResponse(r, id, answer) {
 }
 function startAnswer(r) {
   clearTimer(r);
+  clearBuzzArbitration(r);
+  r.buzzOpensAt = null;
   r.phase = "answer";
   r.drafts.delete(r.active);
-  schedule(r, ANSWER_SECONDS, () => {
+  schedule(r, r.settings.answerSeconds, () => {
     const answering = r.active,
       draft = r.drafts.get(answering);
     if (draft && acceptResponse(r, answering, draft)) return;
@@ -1107,12 +1155,14 @@ function resetClue(r) {
   r.dailyDoubleWager = null;
   r.mediaReleased = false;
   r.mediaController = null;
+  r.buzzOpensAt = null;
+  clearBuzzArbitration(r);
 }
 function openDailyDoubleAnswer(r) {
   r.active = r.dailyDoublePlayer;
   r.phase = "answer";
   r.drafts.delete(r.active);
-  schedule(r, DAILY_DOUBLE_ANSWER_SECONDS, () => {
+  schedule(r, r.settings.dailyDoubleAnswerSeconds, () => {
     const draft = r.drafts.get(r.active);
     if (draft && acceptResponse(r, r.active, draft)) return;
     applyJudgment(r, false);
@@ -1120,7 +1170,8 @@ function openDailyDoubleAnswer(r) {
 }
 function beginReading(r) {
   r.phase = "reading";
-  schedule(r, READING_SECONDS, () => {
+  r.buzzOpensAt = Date.now() + r.settings.readingSeconds * 1000;
+  schedule(r, r.settings.readingSeconds, () => {
     if (r.solo) {
       r.active = [...r.players.keys()][0];
       startAnswer(r);
@@ -1129,20 +1180,15 @@ function beginReading(r) {
 }
 function beginDailyDoubleReading(r) {
   r.phase = "dailyReading";
-  schedule(r, DAILY_DOUBLE_READING_SECONDS, () => openDailyDoubleAnswer(r));
+  schedule(r, r.settings.dailyDoubleReadingSeconds, () =>
+    openDailyDoubleAnswer(r),
+  );
 }
 function startDailyDouble(r, wager) {
   clearTimer(r);
   r.dailyDoubleWager = wager;
-  if (r.clue?.media && !r.mediaReleased) r.phase = "mediaReady";
-  else beginDailyDoubleReading(r);
-}
-function releaseMedia(r) {
-  if (r.phase !== "mediaReady" || !r.clue?.media)
-    throw Error("Media is not waiting to be released");
   r.mediaReleased = true;
-  if (r.dailyDouble) beginDailyDoubleReading(r);
-  else beginReading(r);
+  beginDailyDoubleReading(r);
 }
 function select(r, category, row) {
   if (r.phase !== "board") throw Error("Finish the current clue first");
@@ -1162,15 +1208,11 @@ function select(r, category, row) {
   r.mediaController = r.players.get(r.selector)?.online
     ? r.selector
     : chooseSelector(r);
-  r.mediaReleased = !r.clue.media;
+  r.mediaReleased = true;
   r.dailyDouble = !!r.dailyDoubles?.[r.round]?.has(key);
   r.dailyDoublePlayer = r.dailyDouble ? r.mediaController : null;
   r.dailyDoubleWager = null;
-  r.phase = r.dailyDouble
-    ? "dailyWager"
-    : r.clue.media
-      ? "mediaReady"
-      : "reading";
+  r.phase = r.dailyDouble ? "dailyWager" : "reading";
   clearTimer(r);
   r.active = null;
   r.locked.clear();
@@ -1178,8 +1220,10 @@ function select(r, category, row) {
   r.judgeNote = null;
   r.clarification = null;
   if (r.dailyDouble)
-    schedule(r, DAILY_DOUBLE_WAGER_SECONDS, () => startDailyDouble(r, 5));
-  else if (!r.clue.media) beginReading(r);
+    schedule(r, r.settings.dailyDoubleWagerSeconds, () =>
+      startDailyDouble(r, 5),
+    );
+  else beginReading(r);
 }
 function advanceRound(r, force = false) {
   if (
@@ -1205,7 +1249,7 @@ function advanceRound(r, force = false) {
     r.finalSuggestions = new Map();
     r.finalJudged = new Set();
     r.phase = "finalWager";
-    schedule(r, 30, () => startFinalAnswer(r));
+    schedule(r, r.settings.finalWagerSeconds, () => startFinalAnswer(r));
   }
   return true;
 }
@@ -1216,6 +1260,8 @@ function applyJudgment(r, correct) {
     amount = r.dailyDouble ? r.dailyDoubleWager : r.clue.value;
   r.lastResponder = answering;
   r.lastResponse = r.submitted;
+  r.judgmentRevision = (r.judgmentRevision || 0) + 1;
+  r.lastJudgmentCorrect = correct;
   if (p && typeof correct === "boolean") p.score += correct ? amount : -amount;
   if (correct === true && answering) r.selector = answering;
   if (answering) r.locked.add(answering);
@@ -1288,7 +1334,7 @@ function startFinalAnswer(r) {
   r.finalResponses = new Map();
   r.finalSuggestions = new Map();
   r.finalJudged = new Set();
-  schedule(r, 30, () => enterFinalReveal(r));
+  schedule(r, r.settings.finalAnswerSeconds, () => enterFinalReveal(r));
 }
 async function suggestStandard(r) {
   if (!process.env.OPENAI_API_KEY || r.phase !== "judge" || r.judging) return;
@@ -1380,6 +1426,18 @@ async function suggestFinal(r, id) {
   emit(r);
 }
 io.on("connection", (socket) => {
+  socket.data.oneWayLatencyMs = 0;
+  const latencyInterval = setInterval(() => {
+    const sentAt = Date.now();
+    socket.timeout(2000).emit("latencyProbe", sentAt, (error) => {
+      if (error) return;
+      const sample = Math.min(500, Math.max(0, (Date.now() - sentAt) / 2));
+      socket.data.oneWayLatencyMs = socket.data.oneWayLatencyMs
+        ? socket.data.oneWayLatencyMs * 0.7 + sample * 0.3
+        : sample;
+    });
+  }, 5000);
+  socket.on("clockProbe", (_, ack) => ack?.({ serverTime: Date.now() }));
   socket.on("create", (_, ack) => {
     const c = code();
     const hostToken = randomUUID();
@@ -1405,6 +1463,9 @@ io.on("connection", (socket) => {
       roundDeadline: null,
       roundTimer: null,
       roundTimedOutAt: null,
+      buzzOpensAt: null,
+      buzzTimer: null,
+      buzzCandidates: [],
       boardRevision: 0,
       wagers: new Map(),
       wagerDrafts: new Map(),
@@ -1416,6 +1477,7 @@ io.on("connection", (socket) => {
       submitted: null,
       solo: false,
       autoMode: false,
+      settings: { ...DEFAULT_TIMER_SETTINGS },
       judging: false,
       judgeNote: null,
       clarification: null,
@@ -1424,6 +1486,8 @@ io.on("connection", (socket) => {
       dailyDoubleWager: null,
       mediaReleased: false,
       mediaController: null,
+      judgmentRevision: 0,
+      lastJudgmentCorrect: null,
     };
     resetDailyDoubles(r);
     rooms.set(c, r);
@@ -1546,6 +1610,24 @@ io.on("connection", (socket) => {
     else clearRoundTimer(r);
     emit(r);
     ack?.({ ok: true, enabled: r.autoMode });
+  });
+  socket.on("timerSettings", (data = {}, ack) => {
+    const r = rooms.get(socket.data.room);
+    if (!hostOnly(socket, r))
+      return ack?.({ ok: false, error: "Host only" });
+    const next = {};
+    for (const [key, [minimum, maximum]] of Object.entries(TIMER_LIMITS)) {
+      const value = Number(data[key]);
+      if (!Number.isFinite(value) || value < minimum || value > maximum)
+        return ack?.({
+          ok: false,
+          error: `${key} must be between ${minimum} and ${maximum} seconds`,
+        });
+      next[key] = Math.round(value);
+    }
+    r.settings = next;
+    emit(r);
+    ack?.({ ok: true, settings: { ...r.settings } });
   });
   socket.on("generateBoard", async (data, ack) => {
     const r = rooms.get(socket.data.room);
@@ -1759,28 +1841,6 @@ io.on("connection", (socket) => {
     emit(r);
     ack?.({ ok: true, wager });
   });
-  socket.on("releaseMedia", (_, ack) => {
-    const r = rooms.get(socket.data.room),
-      id = socket.data.player;
-    if (!r) return ack?.({ ok: false, error: "Room not found" });
-    const controllerOnline = r.players.get(r.mediaController)?.online;
-    if (
-      id !== r.mediaController &&
-      !(r.host === socket.id && !controllerOnline)
-    )
-      return ack?.({
-        ok: false,
-        error:
-          "Only the contestant who selected this clue can release its media",
-      });
-    try {
-      releaseMedia(r);
-      emit(r);
-      ack?.({ ok: true });
-    } catch (e) {
-      ack?.({ ok: false, error: e.message });
-    }
-  });
   socket.on("openBuzz", () => {
     const r = rooms.get(socket.data.room);
     if (!hostOnly(socket, r)) return;
@@ -1795,6 +1855,12 @@ io.on("connection", (socket) => {
     const r = rooms.get(socket.data.room),
       id = socket.data.player;
     if (
+      r?.phase === "reading" &&
+      r.buzzOpensAt &&
+      Date.now() >= r.buzzOpensAt
+    )
+      startBuzz(r);
+    if (
       !r ||
       r.phase !== "buzz" ||
       !id ||
@@ -1802,9 +1868,27 @@ io.on("connection", (socket) => {
       !r.players.get(id)?.online
     )
       return;
-    r.active = id;
-    startAnswer(r);
-    emit(r);
+    if (r.buzzCandidates.some((candidate) => candidate.id === id)) return;
+    const receivedAt = Date.now(),
+      correction = Math.min(250, socket.data.oneWayLatencyMs || 0);
+    r.buzzCandidates.push({
+      id,
+      receivedAt,
+      adjustedAt: receivedAt - correction,
+    });
+    if (!r.buzzTimer)
+      r.buzzTimer = setTimeout(() => {
+        r.buzzTimer = null;
+        if (r.phase !== "buzz" || !r.buzzCandidates.length) return;
+        r.buzzCandidates.sort(
+          (a, b) =>
+            a.adjustedAt - b.adjustedAt || a.receivedAt - b.receivedAt,
+        );
+        r.active = r.buzzCandidates[0].id;
+        r.buzzCandidates = [];
+        startAnswer(r);
+        emit(r);
+      }, 300);
   });
   socket.on("answerDraft", (answer, ack) => {
     const r = rooms.get(socket.data.room),
@@ -1999,6 +2083,7 @@ io.on("connection", (socket) => {
     }
   });
   socket.on("disconnect", () => {
+    clearInterval(latencyInterval);
     const r = rooms.get(socket.data.room);
     if (!r) return;
     if (r.host === socket.id) {
@@ -2029,8 +2114,6 @@ io.on("connection", (socket) => {
         }
       }
       if (r.selector === p.id) chooseSelector(r);
-      if (r.mediaController === p.id && r.phase === "mediaReady")
-        r.mediaController = r.selector;
       emit(r);
     }
   });

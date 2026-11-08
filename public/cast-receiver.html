@@ -73,6 +73,10 @@
       .score.active {
         outline: 3px solid #ffd05d;
       }
+      .score.responding {
+        outline: 0.45vw solid #ffd05d;
+        box-shadow: 0 0 2vw rgb(255 208 93 / 85%);
+      }
       #main {
         flex: 1;
         min-height: 0;
@@ -143,6 +147,20 @@
       #clue audio {
         width: 65vw;
       }
+      .playerResponse {
+        margin-top: 2vh;
+        font-size: clamp(24px, 2.7vw, 55px);
+      }
+      .correctResponse {
+        margin-top: 2vh;
+        padding: 1.5vh 2vw;
+        border: 0.4vw solid #ffd05d;
+        border-radius: 1vw;
+        background: #091543;
+        color: #fff2b2;
+        font-size: clamp(32px, 4.4vw, 88px);
+        font-weight: 800;
+      }
       #final {
         width: 100%;
         overflow: auto;
@@ -190,7 +208,11 @@
       let activeRoom = null,
         gameState = null,
         socket = null,
-        currentEffect = null;
+        currentEffect = null,
+        clueMediaNode = null,
+        clueMediaKey = "",
+        clueMediaTimer = null,
+        clueMediaStarted = false;
       const $ = (id) => document.getElementById(id);
       function el(tag, className, content) {
         const node = document.createElement(tag);
@@ -205,6 +227,75 @@
         if (currentEffect) currentEffect.pause();
         currentEffect = new Audio(url);
         currentEffect.play().catch(() => {});
+      }
+      function stopEffect() {
+        if (!currentEffect) return;
+        currentEffect.pause();
+        currentEffect.currentTime = 0;
+        currentEffect = null;
+      }
+      function stopMedia() {
+        if (clueMediaTimer) clearTimeout(clueMediaTimer);
+        clueMediaTimer = null;
+        if (clueMediaNode) {
+          clueMediaNode.pause();
+          try {
+            clueMediaNode.currentTime = 0;
+          } catch {}
+          clueMediaNode.remove();
+        }
+        clueMediaNode = null;
+        clueMediaKey = "";
+        clueMediaStarted = false;
+      }
+      function syncMedia(s, clue) {
+        const m = s.clue?.media,
+          phases = [
+            "reading",
+            "dailyReading",
+            "buzz",
+            "answer",
+            "judge",
+            "finalAnswer",
+          ];
+        if (
+          !m?.url ||
+          !["audio", "video"].includes(m.type) ||
+          !phases.includes(s.phase)
+        )
+          return stopMedia();
+        const key = `${s.round}:${s.clue.category}:${s.clue.row}:${m.url}`;
+        if (key !== clueMediaKey) {
+          stopMedia();
+          clueMediaKey = key;
+          clueMediaNode = el(m.type);
+          clueMediaNode.src = m.url;
+          clueMediaNode.controls = true;
+          clueMediaNode.preload = "metadata";
+          if (m.type === "video") clueMediaNode.playsInline = true;
+        }
+        clue.appendChild(clueMediaNode);
+        if (clueMediaStarted) return;
+        const duration =
+          s.phase === "dailyReading"
+            ? s.settings.dailyDoubleReadingSeconds
+            : s.phase === "reading"
+              ? s.settings.readingSeconds
+              : s.phase === "finalAnswer"
+                ? s.settings.finalAnswerSeconds
+                : 0;
+        const play = () => {
+          clueMediaTimer = null;
+          if (!clueMediaNode || clueMediaStarted) return;
+          clueMediaStarted = true;
+          clueMediaNode.play().catch(() => {});
+        };
+        if (!s.deadline || !duration) play();
+        else {
+          const delay = s.deadline - duration * 500 - Date.now();
+          if (delay <= 0) play();
+          else if (!clueMediaTimer) clueMediaTimer = setTimeout(play, delay);
+        }
       }
       function render(s) {
         const previous = gameState;
@@ -223,9 +314,14 @@
         const scores = $("scores");
         scores.replaceChildren();
         for (const p of s.players || []) {
+          const responding =
+            p.id === (s.active || s.responder) &&
+            ["answer", "judge", "reveal"].includes(s.phase);
           const card = el(
             "div",
-            "score" + (p.id === s.active ? " active" : ""),
+            "score" +
+              (p.id === s.active ? " active" : "") +
+              (responding ? " responding" : ""),
             p.name,
           );
           const amount = el(
@@ -290,16 +386,30 @@
           );
           const m = s.clue?.media;
           if (m?.url) {
-            const media = el(m.type === "image" ? "img" : m.type);
-            media.src = m.url;
-            media.alt = m.alt || "Media clue";
-            if (m.type !== "image") {
-              media.controls = true;
-              media.autoplay = true;
-            }
-            clue.appendChild(media);
+            if (m.type === "image") {
+              const media = el("img");
+              media.src = m.url;
+              media.alt = m.alt || "Media clue";
+              clue.appendChild(media);
+            } else syncMedia(s, clue);
           }
+          const names = Object.fromEntries(
+            (s.players || []).map((p) => [p.id, p.name]),
+          );
+          if (phase === "judge" || phase === "reveal")
+            clue.appendChild(
+              el(
+                "div",
+                "playerResponse",
+                `${names[s.responder] || "Contestant"}: ${s.response || ""}`,
+              ),
+            );
+          if (phase === "reveal")
+            clue.appendChild(
+              el("div", "correctResponse", "Correct response: " + (s.answer || "")),
+            );
         }
+        if (!showClue) stopMedia();
         const showFinal = phase === "finalReveal";
         setVisible("final", showFinal);
         if (showFinal) {
@@ -344,8 +454,21 @@
           previous &&
           s.phase === "finalAnswer" &&
           previous.phase !== "finalAnswer"
-        )
+        ) {
           effect("/sounds/appear.mp3");
+          setTimeout(() => {
+            if (gameState?.phase === "finalAnswer")
+              effect("/sounds/final_jeopardy.mp3");
+          }, 900);
+        }
+        if (previous?.phase === "finalAnswer" && s.phase !== "finalAnswer")
+          stopEffect();
+        if (
+          previous &&
+          s.judgmentRevision !== previous.judgmentRevision &&
+          s.lastJudgmentCorrect === false
+        )
+          effect("/sounds/no.mp3");
         if (
           previous &&
           s.roundTimedOutAt &&
@@ -389,6 +512,7 @@
           reconnectionDelayMax: 5000,
         });
         socket.on("connect", subscribe);
+        socket.on("latencyProbe", (_, acknowledge) => acknowledge?.());
         socket.on("state", (s) => {
           if (s?.code === activeRoom) render(s);
         });
