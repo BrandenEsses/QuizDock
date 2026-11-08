@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateGamePackage } from "../game-content.js";
+import { diagnoseGamePackage, validateGamePackage } from "../game-content.js";
 
 const category = (name, clue, answer) => ({ name, clues: [[clue, answer]] });
 const valid = () => ({
@@ -140,3 +140,30 @@ test("retains a Final Jeopardy category", () => {
   game.final.category = "World Landmarks";
   assert.equal(validateGamePackage(game).final.category, "World Landmarks");
 });
+
+test("detailed diagnostics report multiple repairable issues with paths", () => {
+  const game = valid();
+  game.jeopardy.categories[0].clues[0] = [
+    "This answer is newton.",
+    "newton",
+    { type: "image", url: "javascript:alert(1)" },
+  ];
+  game.doubleJeopardy.categories[0].clues[0][1] = "the newton";
+  game.final.answer = "";
+  const issues = diagnoseGamePackage(game);
+  assert.ok(issues.length >= 4);
+  assert.ok(
+    issues.some(
+      (issue) =>
+        issue.code === "clue.leaks_answer" &&
+        issue.path === "$.jeopardy.categories[0].clues[0][0]",
+    ),
+  );
+  assert.ok(issues.some((issue) => issue.code === "media.invalid"));
+  assert.ok(issues.some((issue) => issue.code === "answer.duplicate"));
+  assert.ok(issues.some((issue) => issue.code === "final.answer_required"));
+  assert.ok(issues.every((issue) => issue.message && issue.suggestion));
+});
+
+test("detailed diagnostics accept a valid game", () =>
+  assert.deepEqual(diagnoseGamePackage(valid()), []));

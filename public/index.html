@@ -601,6 +601,9 @@
               <button id="designerDownload" class="secondary" type="button">
                 Download JSON
               </button>
+              <button id="designerValidate" class="secondary" type="button">
+                Check board
+              </button>
               <button id="designerLoad" type="button">
                 Load designed game
               </button>
@@ -1208,7 +1211,8 @@
           </div>
           <label>Clue<textarea data-final="clue">${esc(designerGame.final.clue)}</textarea></label>
           <details class="designerCategory"><summary>Optional Final Jeopardy media</summary><div class="designerCategoryBody">${designerMediaFields(designerGame.final.media || {}, "final")}</div></details>
-          <p id="designerStatus" class="muted">${round.categories.length} categories · ${round.categories.reduce((sum, category) => sum + category.clues.length, 0)} clues in this round</p>`;
+          <p id="designerStatus" class="muted">${round.categories.length} categories · ${round.categories.reduce((sum, category) => sum + category.clues.length, 0)} clues in this round</p>
+          <div id="designerValidation" aria-live="polite"></div>`;
       }
       function designerPair(target) {
         const categoryIndex = Number(
@@ -1253,6 +1257,7 @@
           }
         }
         designerStatus("Unsaved changes");
+        $("designerValidation").innerHTML = "";
       };
       $("designerRoot").onclick = (event) => {
         const button = event.target.closest("[data-designer-action]");
@@ -1323,7 +1328,48 @@
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         designerStatus("Designer JSON downloaded");
       };
-      $("designerLoad").onclick = () => {
+      async function validateDesigner() {
+        const validation = $("designerValidation"),
+          button = $("designerValidate");
+        button.disabled = true;
+        designerStatus("Checking the complete board…");
+        validation.innerHTML = "";
+        try {
+          const response = await fetch("/api/validate-game", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(designerGame),
+            }),
+            result = await response.json();
+          if (result.valid) {
+            designerStatus("Board is valid and ready to play");
+            validation.innerHTML =
+              '<div class="panel"><strong>✓ Valid game</strong><br><span class="muted">No validation problems were found.</span></div>';
+            return true;
+          }
+          designerStatus(
+            `${result.issueCount || result.issues?.length || 1} problem${(result.issueCount || result.issues?.length) === 1 ? "" : "s"} to fix`,
+          );
+          validation.innerHTML = `<div class="panel"><strong>Board needs changes</strong><ol>${(
+            result.issues || []
+          )
+            .map(
+              (issue) =>
+                `<li><code>${esc(issue.path || "$")}</code> — ${esc(issue.message || "Invalid value")}<br><span class="muted">${esc(issue.suggestion || "Revise this value.")}</span></li>`,
+            )
+            .join("")}</ol></div>`;
+          return false;
+        } catch (error) {
+          designerStatus("Could not check the board");
+          validation.innerHTML = `<div class="panel"><strong>Validation service unavailable</strong><br><span class="muted">${esc(error.message)}</span></div>`;
+          return false;
+        } finally {
+          button.disabled = false;
+        }
+      }
+      $("designerValidate").onclick = validateDesigner;
+      $("designerLoad").onclick = async () => {
+        if (!(await validateDesigner())) return;
         $("boardJson").value = JSON.stringify(designerGame, null, 2);
         const load = () =>
           importFullGame(designerGame, (r) =>

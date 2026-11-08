@@ -1,4 +1,4 @@
-# QuizDock v2.2.1
+# QuizDock v2.3
 
 Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, contestant-controlled Autohost games, Daily Doubles, sound cues, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, reusable game JSON/ZIP bundles, provider-backed native media clues, Cast V4, and private rejoin links.
 
@@ -47,6 +47,19 @@ In Automated host mode, Jeopardy and Double Jeopardy each receive a ten-minute r
 Use **Download game JSON** to save the current two rounds, Final Jeopardy, media references, and generation settings. **Download game + media ZIP** adds `game.json`, a README, and every local media asset used by the game. Custom external HTTPS media remains remote and is listed in the bundle README. **Load game JSON** restores the saved game. **Load generation settings** only repopulates the AI form, allowing edits and a completely new generation without loading the old clues. Daily Double locations are randomized afresh when a game is loaded.
 
 The landing page includes a **Design a custom board** workspace that does not create a game room. Start with a blank 6-category by 5-clue board, edit either round, add or remove categories and clues, fill in Final Jeopardy, and optionally attach image, audio, or video metadata. The designer can upload an existing QuizDock JSON file or download the work in progress as reusable JSON without starting a game. **Start room with this game** validates the finished design and creates a host room only when it is time to play. Inside an existing host room, **Edit current game** copies the room's current board into the same form. Empty clues and invalid media URLs can still be saved as a draft, but must pass the normal game validator before they can be played.
+
+## AI board validator
+
+Point an AI chatbot at `https://quizdock.ble.dev/api/validate-game`. A GET request returns the game shape, rules, endpoint instructions, and the generate → validate → revise workflow in machine-readable JSON. The chatbot should POST its complete generated game to the same URL with `Content-Type: application/json`.
+
+Suggested instruction: “Create a complete QuizDock game. Read the validator instructions at `https://quizdock.ble.dev/api/validate-game`, POST your complete game JSON there, repair every returned issue while preserving unrelated valid content, and repeat until it returns `valid: true`. Then give me the final JSON.”
+
+- HTTP 200 with `valid: true` means the board is ready for QuizDock.
+- HTTP 422 with `valid: false` returns all detected issues, not only the first failure.
+- Every issue includes a stable `code`, a JSON-style `path`, a detailed `message`, and a specific `suggestion`.
+- The chatbot should repair every reported path while preserving unrelated content, POST the entire revised game, and repeat until it receives `valid: true`.
+
+The visual designer's **Check board** and **Start room with this game** actions use this same endpoint, so a rejected design is explained before a room is created.
 
 Custom game import format (the two rounds must be distinct):
 

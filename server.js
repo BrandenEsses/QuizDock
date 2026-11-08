@@ -5,7 +5,11 @@ import { Server } from "socket.io";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { validateBoard, validateGamePackage } from "./game-content.js";
+import {
+  diagnoseGamePackage,
+  validateBoard,
+  validateGamePackage,
+} from "./game-content.js";
 const app = express();
 app.use(express.static("public"));
 app.use("/downloads", express.static("downloads", { dotfiles: "deny" }));
@@ -1978,6 +1982,105 @@ io.on("connection", (socket) => {
     }
   });
 });
+app.get("/api/validate-game", (req, res) =>
+  res.json({
+    name: "QuizDock game validator",
+    purpose:
+      "Validate an AI-generated QuizDock board before uploading or starting a room.",
+    endpoint: `${String(req.get("x-forwarded-proto") || req.protocol).split(",")[0]}://${req.get("host")}/api/validate-game`,
+    method: "POST",
+    contentType: "application/json",
+    recommendedPrompt:
+      "Create a complete QuizDock game. First read the validator instructions at this URL. POST your complete game JSON to the same URL, repair every returned issue at its path while preserving unrelated valid content, and repeat until the validator returns valid=true. Then give me the final JSON.",
+    workflow: [
+      "Generate a complete game object using the shape below.",
+      "POST the game object itself to this endpoint.",
+      "A 200 response with valid=true means it can be loaded into QuizDock.",
+      "A 422 response includes every detected issue. Revise the values at each issue.path using issue.suggestion, then POST the entire game again.",
+      "Repeat until valid=true. Do not remove correct content merely because another field has an issue.",
+    ],
+    shape: {
+      title: "Game title",
+      jeopardy: {
+        categories: [
+          {
+            name: "Category name",
+            clues: [
+              [
+                "Clue text",
+                "Canonical answer",
+                {
+                  type: "optional: image, audio, or video",
+                  url: "optional: HTTPS, /downloads/, or /media/ URL",
+                  alt: "optional neutral description",
+                },
+              ],
+            ],
+          },
+        ],
+      },
+      doubleJeopardy: "Same structure as jeopardy with distinct content",
+      final: {
+        category: "Final category",
+        clue: "Final clue",
+        answer: "Final canonical answer",
+        media: "optional media object",
+      },
+    },
+    constraints: [
+      "Each round needs 1-8 categories; each category needs 1-8 clues.",
+      "Clues and answers must be non-empty strings of at most 1,000 characters.",
+      "A clue may not contain its canonical answer.",
+      "Categories, clues, and answers must not repeat or closely paraphrase other content, including across rounds.",
+      "Final Jeopardy must be distinct and include a clue and answer.",
+    ],
+    rejection: {
+      status: 422,
+      body: {
+        valid: false,
+        issueCount: 1,
+        issues: [
+          {
+            code: "stable.machine_readable_code",
+            path: "$.jeopardy.categories[0].clues[0][0]",
+            message: "Detailed explanation",
+            suggestion: "Specific repair guidance",
+          },
+        ],
+      },
+    },
+  }),
+);
+app.post("/api/validate-game", (req, res) => {
+  const issues = diagnoseGamePackage(req.body);
+  if (issues.length)
+    return res.status(422).json({
+      valid: false,
+      issueCount: issues.length,
+      issues,
+      instruction:
+        "Fix each issue at its path, preserve unrelated valid content, and POST the complete revised game again.",
+    });
+  const game = validateGamePackage(req.body);
+  const summarize = (round) => ({
+    categories: round.categories.length,
+    clues: round.categories.reduce(
+      (total, category) => total + category.clues.length,
+      0,
+    ),
+  });
+  res.json({
+    valid: true,
+    message: "This game is valid and can be loaded into QuizDock.",
+    summary: {
+      title: game.title,
+      jeopardy: summarize(game.jeopardy),
+      doubleJeopardy: summarize(game.doubleJeopardy),
+      finalCategory: game.final.category,
+      mediaClues: gameMedia(game).length,
+    },
+  });
+});
 app.post("/api/export-bundle", (req, res) => {
   const r = rooms.get(String(req.body?.code || ""));
   if (!r || !req.body?.token || req.body.token !== r.hostToken)
@@ -2041,6 +2144,37 @@ app.get("/cast-receiver", (_, res) =>
   res.sendFile("cast-receiver.html", { root: "public" }),
 );
 app.get("/health", (_, res) => res.json({ ok: true, rooms: rooms.size }));
+app.use((error, req, res, next) => {
+  if (error?.type === "entity.too.large")
+    return res.status(413).json({
+      valid: false,
+      issueCount: 1,
+      issues: [
+        {
+          code: "json.too_large",
+          path: "$",
+          message: "The JSON request exceeds QuizDock's 2 MB limit.",
+          suggestion:
+            "Shorten the game and remove embedded data URLs; reference media by URL instead.",
+        },
+      ],
+    });
+  if (error instanceof SyntaxError && error.status === 400 && "body" in error)
+    return res.status(400).json({
+      valid: false,
+      issueCount: 1,
+      issues: [
+        {
+          code: "json.invalid",
+          path: "$",
+          message: "The request body is not valid JSON.",
+          suggestion:
+            "Correct the JSON syntax and POST the complete game object again.",
+        },
+      ],
+    });
+  next(error);
+});
 server.listen(Number(process.env.PORT) || 3000, "0.0.0.0", () =>
   console.log("QuizDock ready"),
 );
