@@ -1,5 +1,6 @@
 import express from "express";
 import archiver from "archiver";
+import multer from "multer";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { createHash, randomInt, randomUUID } from "node:crypto";
@@ -17,6 +18,58 @@ app.use(express.json({ limit: "2mb" }));
 const server = createServer(app);
 const io = new Server(server);
 const rooms = new Map();
+const jsonFileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 2 },
+  fileFilter: (_, file, done) => {
+    if (
+      file.mimetype === "application/json" ||
+      file.originalname.toLowerCase().endsWith(".json")
+    )
+      return done(null, true);
+    const error = new Error("The uploaded file must be JSON.");
+    error.code = "JSON_FILE_TYPE";
+    done(error);
+  },
+}).single("file");
+function parseGameUpload(req, res, next) {
+  if (!req.is("multipart/form-data")) return next();
+  jsonFileUpload(req, res, (error) => {
+    if (error) return next(error);
+    if (!req.file)
+      return res.status(400).json({
+        valid: false,
+        issueCount: 1,
+        issues: [
+          {
+            code: "file.required",
+            path: "$",
+            message: 'No JSON file was uploaded in the "file" field.',
+            suggestion:
+              'Send multipart/form-data with one file field named "file".',
+          },
+        ],
+      });
+    try {
+      req.body = JSON.parse(req.file.buffer.toString("utf8"));
+      next();
+    } catch {
+      res.status(400).json({
+        valid: false,
+        issueCount: 1,
+        issues: [
+          {
+            code: "json.invalid",
+            path: "$",
+            message: `The uploaded file “${req.file.originalname}” is not valid JSON.`,
+            suggestion:
+              "Correct the file's JSON syntax and upload the complete game again.",
+          },
+        ],
+      });
+    }
+  });
+}
 const HOST_GRACE_MS = Math.max(
   60000,
   Math.min(86400000, Number(process.env.HOST_GRACE_SECONDS || 3600) * 1000),
@@ -1989,12 +2042,27 @@ app.get("/api/validate-game", (req, res) =>
       "Validate an AI-generated QuizDock board before uploading or starting a room.",
     endpoint: `${String(req.get("x-forwarded-proto") || req.protocol).split(",")[0]}://${req.get("host")}/api/validate-game`,
     method: "POST",
-    contentType: "application/json",
+    acceptedRequests: [
+      {
+        contentType: "application/json",
+        body: "The complete game object.",
+      },
+      {
+        contentType: "multipart/form-data",
+        body: 'One JSON file in the field named "file".',
+      },
+    ],
+    curlExamples: {
+      jsonBody:
+        "curl -H 'Content-Type: application/json' --data-binary @game.json https://quizdock.ble.dev/api/validate-game",
+      fileUpload:
+        "curl -F 'file=@game.json;type=application/json' https://quizdock.ble.dev/api/validate-game",
+    },
     recommendedPrompt:
       "Create a complete QuizDock game. First read the validator instructions at this URL. POST your complete game JSON to the same URL, repair every returned issue at its path while preserving unrelated valid content, and repeat until the validator returns valid=true. Then give me the final JSON.",
     workflow: [
       "Generate a complete game object using the shape below.",
-      "POST the game object itself to this endpoint.",
+      'POST the game object itself as application/json, or upload game.json as multipart/form-data in a field named "file".',
       "A 200 response with valid=true means it can be loaded into QuizDock.",
       "A 422 response includes every detected issue. Revise the values at each issue.path using issue.suggestion, then POST the entire game again.",
       "Repeat until valid=true. Do not remove correct content merely because another field has an issue.",
@@ -2051,7 +2119,7 @@ app.get("/api/validate-game", (req, res) =>
     },
   }),
 );
-app.post("/api/validate-game", (req, res) => {
+app.post("/api/validate-game", parseGameUpload, (req, res) => {
   const issues = diagnoseGamePackage(req.body);
   if (issues.length)
     return res.status(422).json({
@@ -2145,6 +2213,42 @@ app.get("/cast-receiver", (_, res) =>
 );
 app.get("/health", (_, res) => res.json({ ok: true, rooms: rooms.size }));
 app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError)
+    return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+      valid: false,
+      issueCount: 1,
+      issues: [
+        {
+          code:
+            error.code === "LIMIT_FILE_SIZE"
+              ? "file.too_large"
+              : "file.invalid_upload",
+          path: "$",
+          message:
+            error.code === "LIMIT_FILE_SIZE"
+              ? "The uploaded JSON file exceeds QuizDock's 2 MB limit."
+              : `The file upload is invalid: ${error.message}`,
+          suggestion:
+            error.code === "LIMIT_FILE_SIZE"
+              ? "Shorten the game and reference media by URL instead of embedding it."
+              : 'Upload one JSON file in the multipart field named "file".',
+        },
+      ],
+    });
+  if (error?.code === "JSON_FILE_TYPE")
+    return res.status(415).json({
+      valid: false,
+      issueCount: 1,
+      issues: [
+        {
+          code: "file.invalid_type",
+          path: "$",
+          message: error.message,
+          suggestion:
+            "Upload a .json file or send the game with Content-Type: application/json.",
+        },
+      ],
+    });
   if (error?.type === "entity.too.large")
     return res.status(413).json({
       valid: false,

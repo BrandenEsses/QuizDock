@@ -17,6 +17,10 @@ test("validator exposes self-documenting GET and machine-readable POST routes", 
   assert.match(server, /issueCount/);
   assert.match(server, /suggestion/);
   assert.match(server, /status\(422\)/);
+  assert.match(server, /parseGameUpload/);
+  assert.match(server, /\.single\("file"\)/);
+  assert.match(server, /multipart\/form-data/);
+  assert.match(server, /fileUpload/);
 });
 
 test("board designer validates before creating or loading a room", () => {

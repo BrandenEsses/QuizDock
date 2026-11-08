@@ -1,4 +1,4 @@
-# QuizDock v2.3
+# QuizDock v2.3.1
 
 Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, contestant-controlled Autohost games, Daily Doubles, sound cues, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, reusable game JSON/ZIP bundles, provider-backed native media clues, Cast V4, and private rejoin links.
 
@@ -51,6 +51,20 @@ The landing page includes a **Design a custom board** workspace that does not cr
 ## AI board validator
 
 Point an AI chatbot at `https://quizdock.ble.dev/api/validate-game`. A GET request returns the game shape, rules, endpoint instructions, and the generate → validate → revise workflow in machine-readable JSON. The chatbot should POST its complete generated game to the same URL with `Content-Type: application/json`.
+
+The API also accepts a JSON file as a bounded, memory-only multipart upload. Use a single field named `file`:
+
+```sh
+curl -F 'file=@game.json;type=application/json' https://quizdock.ble.dev/api/validate-game
+```
+
+To send the file contents directly instead, use:
+
+```sh
+curl -H 'Content-Type: application/json' --data-binary @game.json https://quizdock.ble.dev/api/validate-game
+```
+
+Uploads are limited to one 2 MB JSON file and are never saved to disk.
 
 Suggested instruction: “Create a complete QuizDock game. Read the validator instructions at `https://quizdock.ble.dev/api/validate-game`, POST your complete game JSON there, repair every returned issue while preserving unrelated valid content, and repeat until it returns `valid: true`. Then give me the final JSON.”
 
