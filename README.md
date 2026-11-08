@@ -1,4 +1,4 @@
-# QuizDock v2.3.1
+# QuizDock v2.3.2
 
 Dockerized real-time Jeopardy-style trivia. Supports multiplayer phones, contestant-controlled Autohost games, Daily Doubles, sound cues, single-player, two distinct AI-generated rounds, automatic advisory AI answer checks, reusable game JSON/ZIP bundles, provider-backed native media clues, Cast V4, and private rejoin links.
 
@@ -141,15 +141,15 @@ QuizDock requests the `VIDEO_OUT` receiver capability so the native picker exclu
 
 - Host keeps the category board visible while a clue is active; clue panel is separate from hidden setup controls.
 - Player clue text stays on screen during buzz, answer, and judging phases.
-- Cast diagnostics explain desktop Chrome and LAN discovery limitations. This release does **not** solve unsupported Android Chrome native sender discovery or network isolation.
+- Cast diagnostics identify the configured receiver and distinguish video-compatible discovery from Wi-Fi or receiver-registration problems.
 - To cast without the custom receiver: open the TV-only tab in desktop Chrome, choose Cast tab, and return to the host tab.
 
 ## v0.7: Host reconnect and casting
 
 Host sessions use a secret token saved in the host browser localStorage. Returning to the same host URL on the same browser/device automatically resumes the host role, including after switching tabs or temporary connection loss. Rooms stay alive for HOST_GRACE_SECONDS (default one hour) after the host disconnects. This is in-memory only: restarting the Docker container loses active rooms. Keep the host URL/token private; the token is a host credential.
 
-**Casting limitation:** Native Google Cast Web Sender discovery is supported by desktop Chrome, not reliably by Chrome on Android. A registered Cast app ID alone cannot make Android Chrome discover devices. For now use a desktop Chrome tab cast of `/display/ROOMCODE`, or open that spectator URL directly in a TV browser. An Android-native Cast sender app would be needed for a robust one-tap Cast picker on phones.
+**Casting limitation:** Discovery still depends on a Cast-enabled browser, sender and receiver being on the same Wi-Fi network, and the Custom Web Receiver being published or the physical Cast device being registered for development. Use a desktop Chrome tab cast of `/display/ROOMCODE` as the fallback.
 
 ## v0.8 host reconnection fixes
 
-The host token is now saved at room creation and retained on every resume. The server includes the token in resume acknowledgements. Reconnect attempts use a timeout and host actions wait until authorization is restored. Existing rooms created under v0.7 may lack a saved token; create a fresh room after updating. Android Chrome is not a supported native Google Cast web sender; use desktop Chrome's Cast tab for now, or a future Android native sender.
+The host token is now saved at room creation and retained on every resume. The server includes the token in resume acknowledgements. Reconnect attempts use a timeout and host actions wait until authorization is restored. Existing rooms created under v0.7 may lack a saved token; create a fresh room after updating.

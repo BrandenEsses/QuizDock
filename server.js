@@ -2199,12 +2199,23 @@ app.post("/api/export-bundle", (req, res) => {
   );
   void archive.finalize();
 });
-app.get("/api/cast-config", (_, res) =>
+app.get("/api/cast-config", (_, res) => {
+  const configured = String(process.env.CAST_APP_ID || "")
+      .trim()
+      .toUpperCase(),
+    valid = !configured || /^[0-9A-F]{8}$/.test(configured);
   res.json({
-    appId: process.env.CAST_APP_ID || "",
+    appId: valid ? configured : "",
     namespace: "urn:x-cast:dev.ble.quizdock",
-  }),
-);
+    requiredCapability: "VIDEO_OUT",
+    ...(valid
+      ? {}
+      : {
+          error:
+            "CAST_APP_ID is invalid; Google Cast receiver IDs must be 8 hexadecimal characters.",
+        }),
+  });
+});
 app.get(/^\/display\/\d{6}\/?$/, (_, res) =>
   res.sendFile("index.html", { root: "public" }),
 );

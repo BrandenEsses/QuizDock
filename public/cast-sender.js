@@ -1,32 +1,38 @@
-// Native Google Cast requires a registered Custom Web Receiver application ID.
-// Without it, the TV-only tab works with Chrome's Cast tab feature.
+// QuizDock uses the Google Cast Base Sender API so VIDEO_OUT is part of the
+// discovery request itself. This keeps audio-only routes out of the picker.
 let castAppId = "",
-  castContext = null,
-  directCastSession = null;
+  directCastSession = null,
+  castInitialized = false,
+  castInitializing = false;
 const castNamespace = "urn:x-cast:dev.ble.quizdock";
 function castStatus(message) {
   const el = document.getElementById("castStatus");
   if (el) el.textContent = message;
 }
 async function sendCastRoom() {
-  if (!castContext || !state?.code || mode !== "host") return;
+  if (!directCastSession || !state?.code || mode !== "host") return;
   const message = { type: "room", code: state.code };
   try {
-    if (directCastSession)
-      await new Promise((resolve, reject) =>
-        directCastSession.sendMessage(castNamespace, message, resolve, reject),
-      );
-    else {
-      const session = castContext.getCurrentSession();
-      if (!session) return;
-      await session.sendMessage(castNamespace, message);
-    }
-  } catch (e) {
-    castStatus("Unable to send room: " + (e.message || e.description || e));
+    await new Promise((resolve, reject) =>
+      directCastSession.sendMessage(castNamespace, message, resolve, reject),
+    );
+  } catch (error) {
+    castStatus(
+      "Unable to send room: " +
+        (error.message || error.description || String(error)),
+    );
   }
 }
+function rememberCastSession(session) {
+  directCastSession = session;
+  session.addUpdateListener((alive) => {
+    if (!alive && directCastSession === session) directCastSession = null;
+  });
+  void sendCastRoom();
+}
 async function setupCast() {
-  if (tvCode) return;
+  if (tvCode || castInitialized || castInitializing) return;
+  castInitializing = true;
   const button = document.getElementById("castButton");
   document.getElementById("tvTab").onclick = () => {
     if (!state?.code) return castStatus("Create a room first.");
@@ -37,65 +43,88 @@ async function setupCast() {
     );
   };
   try {
-    const res = await fetch("/api/cast-config");
-    const config = await res.json();
+    const res = await fetch("/api/cast-config"),
+      config = await res.json();
     castAppId = config.appId;
+    if (config.error) {
+      castInitializing = false;
+      castStatus(config.error + " Use Open TV-only tab meanwhile.");
+      return;
+    }
     if (!castAppId) {
+      castInitializing = false;
       castStatus(
         "Native Cast needs a registered Google Cast application ID. Use Open TV-only tab meanwhile.",
       );
       return;
     }
-    if (!window.cast?.framework) {
+    if (!window.chrome?.cast) {
+      castInitializing = false;
       castStatus(
-        "Google Cast SDK not ready or unsupported. Use desktop Chrome or cast the TV-only tab.",
+        "Google Cast SDK not ready or unsupported. Use a Cast-enabled Chrome browser or cast the TV-only tab.",
       );
       return;
     }
-    castContext = cast.framework.CastContext.getInstance();
-    castContext.setOptions({
-      receiverApplicationId: castAppId,
-      autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
-    });
-    button.disabled = false;
+    const request = new chrome.cast.SessionRequest(castAppId, [
+        chrome.cast.Capability.VIDEO_OUT,
+      ]),
+      apiConfig = new chrome.cast.ApiConfig(
+        request,
+        rememberCastSession,
+        (availability) => {
+          const available =
+            availability === chrome.cast.ReceiverAvailability.AVAILABLE;
+          button.disabled = !available;
+          castStatus(
+            available
+              ? `Video Cast displays found for receiver ${castAppId}.`
+              : `No compatible video Cast displays found for receiver ${castAppId}. Check Wi-Fi and receiver registration.`,
+          );
+        },
+        chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+      );
+    await new Promise((resolve, reject) =>
+      chrome.cast.initialize(apiConfig, resolve, reject),
+    );
+    castInitialized = true;
+    castInitializing = false;
     castStatus(
-      "Cast SDK ready. Click Cast to list video-capable Chromecast/Google TV displays.",
+      `Cast initialized for video displays with receiver ${castAppId}. Searching…`,
     );
     button.onclick = async () => {
       if (!state?.code) return castStatus("Create a room first.");
       try {
-        const request = new chrome.cast.SessionRequest(castAppId, [
-          chrome.cast.Capability.VIDEO_OUT,
-        ]);
-        directCastSession = await new Promise((resolve, reject) =>
-          chrome.cast.requestSession(resolve, reject, request),
+        const session = await new Promise((resolve, reject) =>
+          chrome.cast.requestSession(resolve, reject),
         );
+        rememberCastSession(session);
         await sendCastRoom();
         castStatus("TV connected to room " + state.code);
-      } catch (e) {
+      } catch (error) {
         castStatus(
-          "Cast cancelled or failed: " + (e.message || e.description || e),
+          "Cast cancelled or failed: " +
+            (error.message || error.description || String(error)),
         );
       }
     };
-    castContext.addEventListener(
-      cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
-      () => sendCastRoom(),
+  } catch (error) {
+    castInitializing = false;
+    castStatus(
+      "Cast setup failed: " +
+        (error.message || error.description || String(error)),
     );
-  } catch (e) {
-    castStatus("Cast setup failed: " + e.message);
   }
 }
 window.__onGCastApiAvailable = function (available) {
-  if (available) setupCast();
+  if (available) void setupCast();
   else
     castStatus(
-      "Google Cast SDK is unavailable in this browser. Try desktop Chrome.",
+      "Google Cast SDK is unavailable in this browser. Try another Cast-enabled Chrome browser.",
     );
 };
 document.addEventListener("DOMContentLoaded", () => {
   if (!tvCode)
     setTimeout(() => {
-      if (!castContext) setupCast();
+      if (!castInitialized) void setupCast();
     }, 1500);
 });
